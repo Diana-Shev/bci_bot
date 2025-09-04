@@ -1,4 +1,58 @@
-.venv/
-__pycache__/
+# Переменные окружения
 .env
-*.pyc
+.env.local
+.env.production
+
+# Виртуальное окружение
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Логи
+*.log
+logs/
+
+# База данных
+*.db
+*.sqlite3
+
+# Загруженные файлы
+downloads/
+uploads/
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Тестовые файлы
+test_*.py
+*_test.py

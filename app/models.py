@@ -1,4 +1,4 @@
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timezone
 from typing import List
 
 from sqlalchemy import (
@@ -22,7 +22,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String(100), nullable=True)
     email: Mapped[str] = mapped_column(String(100), unique=True, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    iaf: Mapped[float] = mapped_column(Numeric(4, 2), nullable=True)  # Individual Alpha Frequency
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # связи
     metrics: Mapped[List["Metric"]] = relationship(back_populates="user")
@@ -37,7 +38,7 @@ class Metric(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
 
     # временная метка
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # числовые поля
     cognitive_score: Mapped[int] = mapped_column(Integer, nullable=True)
@@ -76,10 +77,10 @@ class DailyRecommendation(Base):
     __tablename__ = "daily_recommendations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
     date: Mapped[date] = mapped_column(Date, nullable=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
     recommendation_text: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # связь с пользователем
     user: Mapped["User"] = relationship(back_populates="recommendations")
@@ -92,4 +93,4 @@ class ImprovementSuggestion(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
     suggestion_text: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

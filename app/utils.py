@@ -1,6 +1,6 @@
 #парсим файл в строки и собираем текст-промпт для LLM
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict
 
 NUMERIC_MAP = {
