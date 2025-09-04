@@ -1,0 +1,7 @@
+python-telegram-bot==22.3
+SQLAlchemy==2.0.43
+asyncpg==0.30.0
+pandas==2.2.2
+python-dotenv==1.1.1
+httpx==0.28.1
+pydantic==1.10.14
