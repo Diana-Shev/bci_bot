@@ -103,7 +103,7 @@ async def handle_iaf_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def cb_upload_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка нажатия кнопки 'Загрузи файл с метриками'"""
+    """Обработка нажатия кнопки 'Загрузи файл с метриками' или 'Прикрепить файл'"""
     query = update.callback_query
     await query.answer()
     
@@ -149,12 +149,51 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Файл получен. Парсю...")
 
     try:
-        rows = parse_metrics_file(str(saved_path))
-        if not rows:
-            await update.message.reply_text("В файле нет данных или отсутствуют нужные колонки.")
+        rows, status = parse_metrics_file(str(saved_path))
+        
+        # Обрабатываем ошибки
+        if status.startswith("file_error"):
+            error_msg = status.split(": ", 1)[1] if ": " in status else "Неизвестная ошибка"
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
+            ])
+            await update.message.reply_text(
+                f"❌ Ошибка загрузки файла\n\n"
+                f"Причина: {error_msg}\n\n"
+                f"Таблица продуктивных часов не может быть сформирована",
+                reply_markup=keyboard
+            )
             return
+            
+        elif status.startswith("incomplete_data"):
+            error_msg = status.split(": ", 1)[1] if ": " in status else "Неполные данные"
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📎 Прикрепить файл", callback_data="upload_file")]
+            ])
+            await update.message.reply_text(
+                f"⚠️ Неполные данные\n\n"
+                f"Проверьте файл:\n"
+                f"• временные интервалы\n"
+                f"• обязательные метрики\n\n"
+                f"Исправьте и попробуйте еще раз",
+                reply_markup=keyboard
+            )
+            return
+            
+        elif status != "success":
+            await update.message.reply_text(f"Неизвестная ошибка: {status}")
+            return
+            
     except Exception as e:
-        await update.message.reply_text(f"Ошибка парсинга: {e}")
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
+        ])
+        await update.message.reply_text(
+            f"❌ Ошибка загрузки файла\n\n"
+            f"Причина: {str(e)}\n\n"
+            f"Таблица продуктивных часов не может быть сформирована",
+            reply_markup=keyboard
+        )
         return
 
     # Сохраняем метрики в БД

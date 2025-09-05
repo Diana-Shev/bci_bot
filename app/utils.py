@@ -20,22 +20,61 @@ NUMERIC_MAP = {
 
 ALL_COLS = ["timestamp"] + list(NUMERIC_MAP.keys())
 
-def parse_metrics_file(path: str) -> List[Dict]:
-    if path.lower().endswith(".csv"):
-        df = pd.read_csv(path)
-    else:
-        df = pd.read_excel(path)
+def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
+    """
+    Парсит файл с метриками и возвращает (данные, статус)
+    Статусы: 'success', 'file_error', 'incomplete_data'
+    """
+    try:
+        # Пытаемся прочитать файл
+        if path.lower().endswith(".csv"):
+            df = pd.read_csv(path)
+        else:
+            df = pd.read_excel(path)
+    except Exception as e:
+        return [], f"file_error: Ошибка чтения файла: {str(e)}"
 
-    # rename 'time' to 'timestamp' если есть
+    # Проверяем наличие колонки timestamp
     if "timestamp" not in df.columns and "time" in df.columns:
         df = df.rename(columns={"time": "timestamp"})
 
     if "timestamp" not in df.columns:
-        raise ValueError("Нужна колонка 'timestamp' или 'time' в файле.")
+        return [], "file_error: Отсутствует колонка 'timestamp' или 'time'"
 
+    # Проверяем размер файла
+    if len(df) == 0:
+        return [], "file_error: Файл пустой"
+
+    # Парсим timestamp
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-    df = df.dropna(subset=["timestamp"])
+    valid_timestamps = df.dropna(subset=["timestamp"])
+    
+    if len(valid_timestamps) == 0:
+        return [], "file_error: Нет корректных временных меток"
 
+    # Проверяем наличие обязательных метрик
+    required_metrics = ["cognitive_score", "focus", "chill", "stress"]
+    missing_metrics = [metric for metric in required_metrics if metric not in df.columns]
+    
+    if missing_metrics:
+        return [], f"incomplete_data: Отсутствуют обязательные метрики: {', '.join(missing_metrics)}"
+
+    # Проверяем временные интервалы (должно быть минимум 2 записи с разными временами)
+    unique_times = valid_timestamps["timestamp"].nunique()
+    if unique_times < 2:
+        return [], "incomplete_data: Недостаточно временных интервалов (минимум 2)"
+
+    # Проверяем качество данных - должно быть минимум 50% заполненных метрик
+    total_cells = len(valid_timestamps) * len(required_metrics)
+    filled_cells = 0
+    for metric in required_metrics:
+        filled_cells += valid_timestamps[metric].notna().sum()
+    
+    fill_ratio = filled_cells / total_cells if total_cells > 0 else 0
+    if fill_ratio < 0.5:
+        return [], "incomplete_data: Слишком много пустых значений в метриках"
+
+    # Если все проверки пройдены, обрабатываем данные
     existing = [c for c in ALL_COLS if c in df.columns]
     df = df[existing].copy()
 
@@ -55,7 +94,8 @@ def parse_metrics_file(path: str) -> List[Dict]:
             else:
                 item[key] = None
         rows.append(item)
-    return rows
+    
+    return rows, "success"
 
 def build_prompt_for_llm(user_name: str, metrics_rows: list, instruction: str) -> str:
     sample = metrics_rows[:120]
