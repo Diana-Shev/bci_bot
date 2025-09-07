@@ -17,15 +17,29 @@ async def get_or_create_user(session: AsyncSession, telegram_id: int, name: str 
     await session.refresh(user)
     return user
 
-async def update_user_iaf(session: AsyncSession, telegram_id: int, iaf: float) -> User:
+async def update_user_iaf(session: AsyncSession, telegram_id: int, iaf_input: str) -> User:
+    # Конвертируем запятую в точку
+    iaf_input = iaf_input.replace(',', '.')
+    
+    # Преобразуем в float
+    try:
+        iaf_value = float(iaf_input)
+    except ValueError:
+        raise ValueError("Некорректное значение IAF. Используйте число, например 9,9 или 10.")
+
+    # Находим пользователя
     res = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user = res.scalars().first()
     if not user:
         raise ValueError("User not found")
-    user.iaf = iaf
+
+    # Сохраняем значение
+    user.iaf = iaf_value
+    session.add(user)
     await session.commit()
     await session.refresh(user)
     return user
+
 
 # metrics
 async def save_metrics_bulk(session: AsyncSession, user_id: int, rows: List[dict]) -> int:
