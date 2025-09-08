@@ -51,7 +51,17 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
     except Exception as e:
         return [], f"file_error: Ошибка чтения файла: {str(e)}"
 
-    # Переименовываем колонку 'time' в 'timestamp', если нужно
+    # Нормализуем заголовки: trim + lower + убираем BOM/дубли пробелов + заменяем дефисы/подчеркивания
+    def _norm(col: str) -> str:
+        raw = str(col).replace("\ufeff", "").strip().lower()
+        raw = raw.replace("_", " ").replace("-", " ")
+        raw = " ".join(raw.split())
+        return raw
+
+    normalized_columns = {_norm(c): c for c in df.columns}
+    df = df.rename(columns={v: k for k, v in normalized_columns.items()})
+
+    # Переименовываем колонку 'time' в 'timestamp', если нужно (после нормализации)
     if "timestamp" not in df.columns and "time" in df.columns:
         df = df.rename(columns={"time": "timestamp"})
 
@@ -61,9 +71,8 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
     if len(df) == 0:
         return [], "file_error: Файл пустой"
 
-    # Парсим timestamp и делаем UTC
-    df["timestamp"] = pd.to_datetime(df["timestamp"], format="%Y-%m-%d %H:%M", errors="coerce")
-    df["timestamp"] = df["timestamp"].dt.tz_localize(timezone.utc)
+    # Парсим timestamp и делаем UTC (принимаем разные форматы, с секундами/без, с TZ/без)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True, infer_datetime_format=True)
     valid_timestamps = df.dropna(subset=["timestamp"])
     if len(valid_timestamps) == 0:
         return [], "file_error: Нет корректных временных меток"
@@ -92,7 +101,17 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
         for csv_col, key in CSV_MAP.items():
             if csv_col in df.columns:
                 val = r[csv_col]
-                item[key] = None if pd.isna(val) else NUMERIC_MAP[key](val)
+                if pd.isna(val):
+                    item[key] = None
+                else:
+                    try:
+                        item[key] = NUMERIC_MAP[key](val)
+                    except Exception:
+                        # Пытаемся сконвертировать через float → int при необходимости
+                        try:
+                            item[key] = NUMERIC_MAP[key](float(val))
+                        except Exception:
+                            item[key] = None
             else:
                 item[key] = None
         rows.append(item)
