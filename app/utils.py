@@ -155,7 +155,9 @@ Metrics (time | key:value):
 
 {instruction}
 
-Return ONLY valid JSON like:
+IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or extra text. Start directly with {{ and end with }}.
+
+Example format:
 {{
   "productivity_periods":[{{"start_time":"11:00","end_time":"12:00","recommended_activity":"complex tasks"}}],
   "day_plan":"11:00-12:00 complex tasks; 14:00-14:30 rest; sleep before 23:00",

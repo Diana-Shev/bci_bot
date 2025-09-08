@@ -220,7 +220,30 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                  instruction="Identify hourly productivity and rest periods. Suggest a daily plan. Return strict JSON.")
     try:
         raw = await analyze_metrics(prompt)
-        data = json.loads(raw)
+        
+        # Очищаем ответ от лишних символов и форматирования
+        cleaned_raw = raw.strip()
+        
+        # Убираем markdown блоки ```json и ```
+        if cleaned_raw.startswith("```json"):
+            cleaned_raw = cleaned_raw[7:]  # убираем ```json
+        if cleaned_raw.startswith("```"):
+            cleaned_raw = cleaned_raw[3:]   # убираем ```
+        if cleaned_raw.endswith("```"):
+            cleaned_raw = cleaned_raw[:-3]  # убираем ```
+        
+        cleaned_raw = cleaned_raw.strip()
+        
+        data = json.loads(cleaned_raw)
+    except json.JSONDecodeError as e:
+        await update.message.reply_text(
+            f"❌ Ошибка парсинга JSON от модели\n\n"
+            f"Модель вернула некорректный JSON.\n"
+            f"Попробуйте загрузить файл еще раз.\n\n"
+            f"Ответ модели:\n{raw[:500]}...\n\n"
+            f"Ошибка: {str(e)}"
+        )
+        return
     except Exception as e:
         # Если произошла ошибка до определения raw, показываем текст ошибки
         err_text = str(e)
