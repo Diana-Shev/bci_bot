@@ -141,10 +141,22 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Поддерживаются только файлы CSV и XLSX")
         return
     
-    # Сохраняем файл
+    # Сохраняем файл с обработкой таймаута
     saved_path = DOWNLOAD_DIR / f"{tg_id}_{doc.file_name}"
-    file = await doc.get_file()
-    await file.download_to_drive(str(saved_path))
+    try:
+        file = await doc.get_file()
+        await file.download_to_drive(str(saved_path))
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Ошибка загрузки файла\n\n"
+            f"Не удалось скачать файл с серверов Telegram.\n"
+            f"Попробуйте:\n"
+            f"• Проверить интернет-соединение\n"
+            f"• Загрузить файл меньшего размера\n"
+            f"• Попробовать позже\n\n"
+            f"Техническая ошибка: {str(e)}"
+        )
+        return
     
     await update.message.reply_text("Файл получен. Парсю...")
 
@@ -437,6 +449,9 @@ async def cb_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = Application.builder().token(settings.BOT_TOKEN).build()
+    
+    # Увеличиваем таймауты для загрузки файлов
+    app.bot.request.timeout = 120  # 2 минуты вместо стандартных 5 секунд
     
     # Обработчики команд
     app.add_handler(CommandHandler("start", cmd_start))
