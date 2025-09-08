@@ -141,21 +141,61 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Поддерживаются только файлы CSV и XLSX")
         return
     
+    # Проверяем размер файла (максимум 20MB)
+    if doc.file_size and doc.file_size > 20 * 1024 * 1024:
+        await update.message.reply_text(
+            "❌ Файл слишком большой\n\n"
+            "Максимальный размер файла: 20MB\n"
+            f"Размер вашего файла: {doc.file_size / (1024*1024):.1f}MB\n\n"
+            "Попробуйте уменьшить размер файла или разделить на части."
+        )
+        return
+    
     # Сохраняем файл с обработкой таймаута
     saved_path = DOWNLOAD_DIR / f"{tg_id}_{doc.file_name}"
     try:
+        await update.message.reply_text("📥 Скачиваю файл...")
         file = await doc.get_file()
-        await file.download_to_drive(str(saved_path))
+        
+        # Пробуем скачать через прямую ссылку (быстрее для больших файлов)
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(file.file_path) as response:
+                    if response.status == 200:
+                        with open(saved_path, 'wb') as f:
+                            async for chunk in response.content.iter_chunked(8192):
+                                f.write(chunk)
+                        await update.message.reply_text("✅ Файл скачан успешно")
+                    else:
+                        raise Exception(f"HTTP {response.status}")
+        except Exception:
+            # Если не получилось через aiohttp, используем стандартный метод
+            await file.download_to_drive(str(saved_path))
+            await update.message.reply_text("✅ Файл скачан успешно")
+            
     except Exception as e:
-        await update.message.reply_text(
-            f"❌ Ошибка загрузки файла\n\n"
-            f"Не удалось скачать файл с серверов Telegram.\n"
-            f"Попробуйте:\n"
-            f"• Проверить интернет-соединение\n"
-            f"• Загрузить файл меньшего размера\n"
-            f"• Попробовать позже\n\n"
-            f"Техническая ошибка: {str(e)}"
-        )
+        error_msg = str(e)
+        if "Timed out" in error_msg or "timeout" in error_msg.lower():
+            await update.message.reply_text(
+                f"⏰ Таймаут загрузки файла\n\n"
+                f"Файл слишком большой или медленное соединение.\n"
+                f"Попробуйте:\n"
+                f"• Уменьшить размер файла (максимум 20MB)\n"
+                f"• Проверить интернет-соединение\n"
+                f"• Попробовать позже\n\n"
+                f"Размер файла: {doc.file_size / (1024*1024):.1f}MB" if doc.file_size else "Размер неизвестен"
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ Ошибка загрузки файла\n\n"
+                f"Не удалось скачать файл с серверов Telegram.\n"
+                f"Попробуйте:\n"
+                f"• Проверить интернет-соединение\n"
+                f"• Загрузить файл меньшего размера\n"
+                f"• Попробовать позже\n\n"
+                f"Техническая ошибка: {error_msg}"
+            )
         return
     
     await update.message.reply_text("Файл получен. Парсю...")
@@ -497,7 +537,8 @@ def main():
     app = Application.builder().token(settings.BOT_TOKEN).build()
     
     # Увеличиваем таймауты для загрузки файлов
-    app.bot.request.timeout = 120  # 2 минуты вместо стандартных 5 секунд
+    app.bot.request.timeout = 300  # 5 минут для больших файлов
+    app.bot.request.connect_timeout = 60  # 1 минута на подключение
     
     # Обработчики команд
     app.add_handler(CommandHandler("start", cmd_start))
