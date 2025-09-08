@@ -234,6 +234,20 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         cleaned_raw = cleaned_raw.strip()
         
+        # Дополнительная очистка - убираем возможные лишние символы в начале
+        if not cleaned_raw.startswith("{"):
+            # Ищем первую открывающую скобку
+            start_idx = cleaned_raw.find("{")
+            if start_idx != -1:
+                cleaned_raw = cleaned_raw[start_idx:]
+        
+        # Убираем возможные лишние символы в конце
+        if not cleaned_raw.endswith("}"):
+            # Ищем последнюю закрывающую скобку
+            end_idx = cleaned_raw.rfind("}")
+            if end_idx != -1:
+                cleaned_raw = cleaned_raw[:end_idx + 1]
+        
         data = json.loads(cleaned_raw)
     except json.JSONDecodeError as e:
         await update.message.reply_text(
@@ -310,9 +324,18 @@ async def cb_download_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     out_path = DOWNLOAD_DIR / f"{tg_id}_periods.csv"
     df.to_csv(out_path, index=False)
     
-    # Отправляем файл
-    with open(out_path, "rb") as f:
-        await context.bot.send_document(chat_id=tg_id, document=f)
+    # Отправляем файл с обработкой таймаута
+    try:
+        with open(out_path, "rb") as f:
+            await context.bot.send_document(chat_id=tg_id, document=f)
+    except Exception as e:
+        await query.edit_message_text(
+            f"❌ Ошибка отправки файла\n\n"
+            f"Не удалось отправить CSV файл.\n"
+            f"Попробуйте позже или обратитесь к администратору.\n\n"
+            f"Ошибка: {str(e)}"
+        )
+        return
     
     # Показываем кнопки для следующего шага
     keyboard = InlineKeyboardMarkup([

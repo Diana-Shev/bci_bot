@@ -71,7 +71,7 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
         return [], "file_error: Файл пустой"
 
     # Парсим timestamp и приводим к offset-naive UTC
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True, infer_datetime_format=True)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
     df["timestamp"] = df["timestamp"].dt.tz_convert(None)  # убираем tzinfo, становится naive
     valid_timestamps = df.dropna(subset=["timestamp"])
     if len(valid_timestamps) == 0:
