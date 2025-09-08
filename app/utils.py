@@ -40,7 +40,7 @@ CSV_MAP = {
 def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
     """
     Парсит CSV/XLSX с метриками и возвращает (данные, статус)
-    Конвертирует 'time'/'timestamp' в datetime UTC.
+    Конвертирует 'time'/'timestamp' в datetime (offset-naive, UTC).
     Поддерживает CSV с пробелами/дефисами в названиях колонок.
     """
     try:
@@ -51,7 +51,7 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
     except Exception as e:
         return [], f"file_error: Ошибка чтения файла: {str(e)}"
 
-    # Нормализуем заголовки: trim + lower + убираем BOM/дубли пробелов + заменяем дефисы/подчеркивания
+    # Нормализуем заголовки
     def _norm(col: str) -> str:
         raw = str(col).replace("\ufeff", "").strip().lower()
         raw = raw.replace("_", " ").replace("-", " ")
@@ -61,7 +61,6 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
     normalized_columns = {_norm(c): c for c in df.columns}
     df = df.rename(columns={v: k for k, v in normalized_columns.items()})
 
-    # Переименовываем колонку 'time' в 'timestamp', если нужно (после нормализации)
     if "timestamp" not in df.columns and "time" in df.columns:
         df = df.rename(columns={"time": "timestamp"})
 
@@ -71,24 +70,23 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
     if len(df) == 0:
         return [], "file_error: Файл пустой"
 
-    # Парсим timestamp и делаем UTC (принимаем разные форматы, с секундами/без, с TZ/без)
+    # Парсим timestamp и приводим к offset-naive UTC
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True, infer_datetime_format=True)
+    df["timestamp"] = df["timestamp"].dt.tz_convert(None)  # убираем tzinfo, становится naive
     valid_timestamps = df.dropna(subset=["timestamp"])
     if len(valid_timestamps) == 0:
         return [], "file_error: Нет корректных временных меток"
 
-    # Проверяем наличие обязательных метрик
+    # Проверка обязательных метрик
     required_metrics = ["cognitive_score", "focus", "chill", "stress"]
     present_metrics = [CSV_MAP.get(col, col) for col in df.columns if CSV_MAP.get(col, col) in NUMERIC_MAP]
     missing_metrics = [metric for metric in required_metrics if metric not in present_metrics]
     if missing_metrics:
         return [], f"incomplete_data: Отсутствуют обязательные метрики: {', '.join(missing_metrics)}"
 
-    # Минимум 2 уникальных временных метки
     if valid_timestamps["timestamp"].nunique() < 2:
         return [], "incomplete_data: Недостаточно временных интервалов (минимум 2)"
 
-    # Проверка заполненности (50% минимум)
     total_cells = len(valid_timestamps) * len(required_metrics)
     filled_cells = sum(valid_timestamps[col].notna().sum() for col in df.columns if CSV_MAP.get(col, col) in required_metrics)
     if filled_cells / total_cells < 0.5:
@@ -97,7 +95,8 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
     # Формируем итоговые строки
     rows = []
     for _, r in df.iterrows():
-        item = {"timestamp": r["timestamp"].to_pydatetime()}
+        ts_naive = r["timestamp"]  # теперь offset-naive
+        item = {"timestamp": ts_naive}
         for csv_col, key in CSV_MAP.items():
             if csv_col in df.columns:
                 val = r[csv_col]
@@ -107,7 +106,6 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
                     try:
                         item[key] = NUMERIC_MAP[key](val)
                     except Exception:
-                        # Пытаемся сконвертировать через float → int при необходимости
                         try:
                             item[key] = NUMERIC_MAP[key](float(val))
                         except Exception:
