@@ -70,9 +70,11 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
     if len(df) == 0:
         return [], "file_error: Файл пустой"
 
-    # Парсим timestamp и приводим к offset-naive UTC
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
-    df["timestamp"] = df["timestamp"].dt.tz_convert(None)  # убираем tzinfo, становится naive
+    # Парсим timestamp и делаем его timezone-naive (без часового пояса)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    # Убираем timezone info если есть, делаем naive datetime
+    if df["timestamp"].dt.tz is not None:
+        df["timestamp"] = df["timestamp"].dt.tz_localize(None)
     valid_timestamps = df.dropna(subset=["timestamp"])
     if len(valid_timestamps) == 0:
         return [], "file_error: Нет корректных временных меток"

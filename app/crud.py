@@ -73,7 +73,7 @@ async def get_productivity_periods(session: AsyncSession, user_id: int):
 
 # daily plan
 async def save_day_plan(session: AsyncSession, user_id: int, day_plan_text: str):
-    rec = DailyRecommendation(user_id=user_id, date=date.today(), recommendation_text=day_plan_text, created_at=datetime.now(timezone.utc))
+    rec = DailyRecommendation(user_id=user_id, date=date.today(), recommendation_text=day_plan_text, created_at=datetime.now())
     session.add(rec)
     await session.commit()
     return rec.id
@@ -82,7 +82,7 @@ async def save_day_plan(session: AsyncSession, user_id: int, day_plan_text: str)
 async def save_improvement_suggestions(session: AsyncSession, user_id: int, suggestions: List[str]) -> int:
     if not suggestions:
         return 0
-    objs = [ImprovementSuggestion(user_id=user_id, suggestion_text=s, created_at=datetime.now(timezone.utc)) for s in suggestions]
+    objs = [ImprovementSuggestion(user_id=user_id, suggestion_text=s, created_at=datetime.now()) for s in suggestions]
     session.add_all(objs)
     await session.commit()
     return len(objs)

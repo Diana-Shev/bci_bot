@@ -431,7 +431,44 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
     
     try:
         raw = await analyze_metrics(prompt)
-        data = json.loads(raw)
+        
+        # Очищаем ответ от лишних символов и форматирования
+        cleaned_raw = raw.strip()
+        
+        # Убираем markdown блоки ```json и ```
+        if cleaned_raw.startswith("```json"):
+            cleaned_raw = cleaned_raw[7:]  # убираем ```json
+        if cleaned_raw.startswith("```"):
+            cleaned_raw = cleaned_raw[3:]   # убираем ```
+        if cleaned_raw.endswith("```"):
+            cleaned_raw = cleaned_raw[:-3]  # убираем ```
+        
+        cleaned_raw = cleaned_raw.strip()
+        
+        # Дополнительная очистка - убираем возможные лишние символы в начале
+        if not cleaned_raw.startswith("{"):
+            # Ищем первую открывающую скобку
+            start_idx = cleaned_raw.find("{")
+            if start_idx != -1:
+                cleaned_raw = cleaned_raw[start_idx:]
+        
+        # Убираем возможные лишние символы в конце
+        if not cleaned_raw.endswith("}"):
+            # Ищем последнюю закрывающую скобку
+            end_idx = cleaned_raw.rfind("}")
+            if end_idx != -1:
+                cleaned_raw = cleaned_raw[:end_idx + 1]
+        
+        data = json.loads(cleaned_raw)
+    except json.JSONDecodeError as e:
+        await query.edit_message_text(
+            f"❌ Ошибка парсинга JSON от модели\n\n"
+            f"Модель вернула некорректный JSON.\n"
+            f"Попробуйте загрузить файл еще раз.\n\n"
+            f"Ответ модели:\n{raw[:500]}...\n\n"
+            f"Ошибка: {str(e)}"
+        )
+        return
     except Exception as e:
         await query.edit_message_text(f"Ошибка LLM: {e}\nОтвет:\n{raw}")
         return
@@ -439,8 +476,17 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
     day_plan = data.get("day_plan", "(нет)")
     
     # Сохраняем рекомендации в БД
-    async with AsyncSessionLocal() as session:
-        await save_day_plan(session, user.user_id, day_plan)
+    try:
+        async with AsyncSessionLocal() as session:
+            await save_day_plan(session, user.user_id, day_plan)
+    except Exception as e:
+        await query.edit_message_text(
+            f"❌ Ошибка сохранения в базу данных\n\n"
+            f"Не удалось сохранить рекомендации.\n"
+            f"Попробуйте позже.\n\n"
+            f"Ошибка: {str(e)}"
+        )
+        return
     
     # Показываем рекомендации и кнопки для следующего шага
     keyboard = InlineKeyboardMarkup([
@@ -492,7 +538,44 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     try:
         raw = await analyze_metrics(prompt)
-        data = json.loads(raw)
+        
+        # Очищаем ответ от лишних символов и форматирования
+        cleaned_raw = raw.strip()
+        
+        # Убираем markdown блоки ```json и ```
+        if cleaned_raw.startswith("```json"):
+            cleaned_raw = cleaned_raw[7:]  # убираем ```json
+        if cleaned_raw.startswith("```"):
+            cleaned_raw = cleaned_raw[3:]   # убираем ```
+        if cleaned_raw.endswith("```"):
+            cleaned_raw = cleaned_raw[:-3]  # убираем ```
+        
+        cleaned_raw = cleaned_raw.strip()
+        
+        # Дополнительная очистка - убираем возможные лишние символы в начале
+        if not cleaned_raw.startswith("{"):
+            # Ищем первую открывающую скобку
+            start_idx = cleaned_raw.find("{")
+            if start_idx != -1:
+                cleaned_raw = cleaned_raw[start_idx:]
+        
+        # Убираем возможные лишние символы в конце
+        if not cleaned_raw.endswith("}"):
+            # Ищем последнюю закрывающую скобку
+            end_idx = cleaned_raw.rfind("}")
+            if end_idx != -1:
+                cleaned_raw = cleaned_raw[:end_idx + 1]
+        
+        data = json.loads(cleaned_raw)
+    except json.JSONDecodeError as e:
+        await query.edit_message_text(
+            f"❌ Ошибка парсинга JSON от модели\n\n"
+            f"Модель вернула некорректный JSON.\n"
+            f"Попробуйте загрузить файл еще раз.\n\n"
+            f"Ответ модели:\n{raw[:500]}...\n\n"
+            f"Ошибка: {str(e)}"
+        )
+        return
     except Exception as e:
         await query.edit_message_text(f"Ошибка LLM: {e}\nОтвет:\n{raw}")
         return
@@ -501,8 +584,17 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     if tips:
         # Сохраняем улучшения в БД
-        async with AsyncSessionLocal() as session:
-            await save_improvement_suggestions(session, user.user_id, tips)
+        try:
+            async with AsyncSessionLocal() as session:
+                await save_improvement_suggestions(session, user.user_id, tips)
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Ошибка сохранения в базу данных\n\n"
+                f"Не удалось сохранить советы.\n"
+                f"Попробуйте позже.\n\n"
+                f"Ошибка: {str(e)}"
+            )
+            return
         
         text = "💡 Советы по улучшению режима дня:\n\n" + "\n".join(f"• {t}" for t in tips)
     else:
