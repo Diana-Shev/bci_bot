@@ -125,8 +125,22 @@ def build_prompt_for_llm(user_name: str, metrics_rows: list, instruction: str, d
     lines = []
 
     for m in metrics_rows:
-        ts: datetime = m["timestamp"]
-        t = ts.strftime("%Y-%m-%d %H:%M UTC") if display_utc else ts.astimezone().strftime("%Y-%m-%d %H:%M")
+        ts = m["timestamp"]
+
+        # гарантируем что это Python datetime, а не pandas.Timestamp
+        if hasattr(ts, "to_pydatetime"):
+            ts = ts.to_pydatetime()
+
+        if display_utc:
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)  # считаем naive как UTC
+            t = ts.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        else:
+            if ts.tzinfo is None:
+                t = ts.strftime("%Y-%m-%d %H:%M")  # naive -> как есть
+            else:
+                t = ts.astimezone().strftime("%Y-%m-%d %H:%M")
+
         pairs = [f"{k}:{m.get(k)}" for k in NUMERIC_MAP.keys()]
         lines.append(f"{t} | " + ", ".join(pairs))
 
@@ -149,3 +163,4 @@ Return ONLY valid JSON like:
 }}
 """
     return prompt
+
