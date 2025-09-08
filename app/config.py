@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     DATABASE_URL: str  # ждём async URL: postgresql+asyncpg://...
     DEEPSEEK_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
+    LLM_MODEL: str = "deepseek/deepseek-chat-v3.1"
     DOWNLOADS_DIR: str = "./downloads"
 
     class Config:

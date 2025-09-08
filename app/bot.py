@@ -210,7 +210,17 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         raw = await analyze_metrics(prompt)
         data = json.loads(raw)
     except Exception as e:
-        await update.message.reply_text("LLM вернул невалидный ответ. Сырой текст:\n" + str(raw))
+        # Если произошла ошибка до определения raw, показываем текст ошибки
+        err_text = str(e)
+        try:
+            fallback = raw  # может не существовать
+        except Exception:
+            fallback = "<нет ответа от модели>"
+        await update.message.reply_text(
+            "Ошибка при анализе через LLM. "
+            + ("\nОтвет модели:\n" + str(fallback) if fallback else "")
+            + ("\nТехническая ошибка: " + err_text if err_text else "")
+        )
         return
 
     periods = data.get("productivity_periods", []) or []
