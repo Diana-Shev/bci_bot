@@ -295,7 +295,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = build_prompt_for_llm(
         user_name=name,
         metrics_rows=rows,
-        instruction=expert_instruction
+        instruction=instruction
     )
 
     try:
