@@ -153,29 +153,37 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Сохраняем файл с обработкой таймаута
     saved_path = DOWNLOAD_DIR / f"{tg_id}_{doc.file_name}"
+    
+    # Отладочная информация
+    print(f"DEBUG: Загружаем файл {doc.file_name}")
+    print(f"DEBUG: Размер файла: {doc.file_size}")
+    print(f"DEBUG: Путь сохранения: {saved_path}")
+    
     try:
         await update.message.reply_text("📥 Скачиваю файл...")
         file = await doc.get_file()
+        print(f"DEBUG: Получен объект файла: {file}")
         
-        # Пробуем скачать через прямую ссылку (быстрее для больших файлов)
-        try:
-            import aiohttp
-            async with aiohttp.ClientSession() as session:
-                async with session.get(file.file_path) as response:
-                    if response.status == 200:
-                        with open(saved_path, 'wb') as f:
-                            async for chunk in response.content.iter_chunked(8192):
-                                f.write(chunk)
-                        await update.message.reply_text("✅ Файл скачан успешно")
-                    else:
-                        raise Exception(f"HTTP {response.status}")
-        except Exception:
-            # Если не получилось через aiohttp, используем стандартный метод
-            await file.download_to_drive(str(saved_path))
-            await update.message.reply_text("✅ Файл скачан успешно")
+        # Используем стандартный метод загрузки (более надежный)
+        await file.download_to_drive(str(saved_path))
+        print(f"DEBUG: Файл скачан, проверяем существование...")
+        
+        # Проверяем, что файл действительно скачался
+        if not saved_path.exists():
+            raise Exception("Файл не был сохранен на диск")
+            
+        file_size = saved_path.stat().st_size
+        print(f"DEBUG: Файл сохранен, размер: {file_size} байт")
+        await update.message.reply_text("✅ Файл скачан успешно")
             
     except Exception as e:
         error_msg = str(e)
+        file_size_info = ""
+        if doc.file_size:
+            file_size_info = f"Размер файла: {doc.file_size / (1024*1024):.1f}MB"
+        else:
+            file_size_info = "Размер файла: неизвестен"
+            
         if "Timed out" in error_msg or "timeout" in error_msg.lower():
             await update.message.reply_text(
                 f"⏰ Таймаут загрузки файла\n\n"
@@ -184,7 +192,8 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• Уменьшить размер файла (максимум 20MB)\n"
                 f"• Проверить интернет-соединение\n"
                 f"• Попробовать позже\n\n"
-                f"Размер файла: {doc.file_size / (1024*1024):.1f}MB" if doc.file_size else "Размер неизвестен"
+                f"{file_size_info}\n"
+                f"Техническая ошибка: {error_msg}"
             )
         else:
             await update.message.reply_text(
@@ -194,6 +203,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• Проверить интернет-соединение\n"
                 f"• Загрузить файл меньшего размера\n"
                 f"• Попробовать позже\n\n"
+                f"{file_size_info}\n"
                 f"Техническая ошибка: {error_msg}"
             )
         return
