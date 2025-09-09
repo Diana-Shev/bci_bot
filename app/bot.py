@@ -165,7 +165,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"DEBUG: Получен объект файла: {file}")
         
         # Используем стандартный метод загрузки (более надежный)
-        await file.download_to_drive(str(saved_path))
+        await file.download_to_drive(str(saved_path), timeout=120)
         print(f"DEBUG: Файл скачан, проверяем существование...")
         
         # Проверяем, что файл действительно скачался
