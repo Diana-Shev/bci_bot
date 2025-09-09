@@ -255,11 +255,41 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"Сохранено {n} строк метрик. Запускаю анализ...")
 
-    # Анализируем метрики через LLM
-    prompt = build_prompt_for_llm(user_name=name, metrics_rows=rows,
-                                 instruction="Identify hourly productivity and rest periods. Suggest a daily plan. Return strict JSON.")
+    # Анализируем метрики через LLM (DeepSeek)
+    expert_instruction = """
+Ты — эксперт в области нейрофизиологии человека и нейропсихофизиологии, 
+специализируешься на анализе BCI/ЭЭГ данных и работе с когнитивными паттернами. 
+Используй подходы доказательной медицины и результаты исследований 
+(Базановой Ольги Михайловны, Pfurtscheller, Klimesch и др.) для построения точного и индивидуализированного 
+профиля нейрофизиологического состояния.
+
+Требуется:
+1. Проанализировать данные с учётом двух типов активности и временной разнородности сессий.  
+2. Выявить оптимальные показатели работоспособности и текущее состояние.  
+3. С высокой точностью определить:  
+   • Лучшие часы дня для выполнения сложной работы.  
+   • Окна перегрузки и падения фокуса.  
+
+Формат ответа — строгий JSON:  
+{
+  "productivity_periods": [
+    {"start_time": "HH:MM", "end_time": "HH:MM", "recommended_activity": "string"}
+  ],
+  "day_plan": "string",
+  "improvement_suggestions": ["string", "string"]
+}
+"""
+
+    prompt = build_prompt_for_llm(
+        user_name=name,
+        metrics_rows=rows,
+        instruction=expert_instruction
+    )
+
     try:
         raw = await analyze_metrics(prompt)
+        
+
         
         # Очищаем ответ от лишних символов и форматирования
         cleaned_raw = raw.strip()
@@ -426,7 +456,17 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
     prompt = build_prompt_for_llm(
         user_name=query.from_user.full_name, 
         metrics_rows=rows,
-        instruction="Return ONLY JSON with key 'day_plan' (string). Give specific daily schedule recommendations based on the metrics."
+        instruction = """
+Ты — эксперт в области нейрофизиологии человека. 
+Используя анализ BCI/ЭЭГ-метрик и знания о циркадных ритмах, составь персональное расписание дня (day_plan). 
+В расписании должны быть:
+- Часы максимальной продуктивности (для сложных задач).
+- Времена отдыха/релаксации.
+- Оптимальное время для сна.
+
+Ответ верни строго в JSON с ключом "day_plan".
+"""
+
     )
     
     try:
@@ -533,7 +573,17 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
     prompt = build_prompt_for_llm(
         user_name=query.from_user.full_name, 
         metrics_rows=rows,
-        instruction="Return ONLY JSON with key 'improvement_suggestions' (array of strings). Give specific improvement suggestions for the daily schedule."
+        instruction = """
+Ты — эксперт в области нейропсихофизиологии. 
+На основе анализа когнитивных паттернов и текущего расписания пользователя предложи конкретные шаги по улучшению режима дня. 
+Фокусируйся на:
+- Точечных изменениях, повышающих продуктивность.
+- Снижение утомляемости.
+- Методы восстановления ресурсов.
+
+Ответ верни строго в JSON с ключом "improvement_suggestions" (массив строк).
+"""
+
     )
     
     try:
