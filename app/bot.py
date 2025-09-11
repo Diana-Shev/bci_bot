@@ -36,6 +36,13 @@ def safe_json_loads(raw: str):
     end = cleaned.rfind("}")
     if start != -1 and end != -1:
         cleaned = cleaned[start:end+1]
+    else:
+        # Если не найдено начало/конец JSON, возвращаем исходную строку
+        # или выбрасываем ошибку, в зависимости от желаемого поведения
+        raise json.JSONDecodeError("JSON object not found", raw, 0)
+
+    # Удаляем троеточия '...' которые часто вставляются LLM при обрезке ответа
+    cleaned = re.sub(r"\.{2,5}", "", cleaned) # Удаляем от 2 до 5 точек, чтобы захватить '...', '....', '.....'
 
     # пробуем распарсить как есть
     try:
@@ -579,7 +586,11 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
 - Времена отдыха/релаксации.
 - Оптимальное время для сна.
 
-Ответ верни строго в JSON с ключом "day_plan".
+Ответ верни СТРОГО в JSON с ключом "day_plan". JSON должен быть полным и валидным.
+Пример JSON:
+```json
+{"day_plan": "1. Утренний подъем (7:00-7:30): Легкая зарядка, медитация. 2. Продуктивная работа (9:00-12:00): Сосредоточенные задачи..."}
+```
 """
 
     )
@@ -696,7 +707,11 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
 - Снижение утомляемости.
 - Методы восстановления ресурсов.
 
-Ответ верни строго в JSON с ключом "improvement_suggestions" (массив строк).
+Ответ верни СТРОГО в JSON с ключом "improvement_suggestions" (массив строк). JSON должен быть полным и валидным.
+Пример JSON:
+```json
+{"improvement_suggestions": ["1. Увеличьте продолжительность сна на 30 минут.", "2. Включите короткие перерывы в работу..."]}
+```
 """
 
     )
