@@ -4,11 +4,54 @@ from pathlib import Path
 from datetime import datetime
 import pandas as pd
 import aiohttp # Добавляем импорт aiohttp
+import re # Добавляем импорт re для safe_json_loads
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 )
+
+import re
+
+
+def safe_json_loads(raw: str):
+    """
+    Попытка безопасно распарсить JSON из ответа модели.
+    Возвращает dict или выбрасывает json.JSONDecodeError.
+    """
+    cleaned = raw.strip()
+
+    # убираем markdown-блоки ```json ... ```
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    if cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+
+    cleaned = cleaned.strip()
+
+    # вырезаем от первой { до последней }
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1:
+        cleaned = cleaned[start:end+1]
+
+    # пробуем распарсить как есть
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # фиксируем частые ошибки: висящие кавычки, лишние запятые
+    fixed = re.sub(r",\s*([}\]])", r"\1", cleaned)  # убираем запятую перед } или ]
+    fixed = fixed.replace('\\"', '"')  # убираем лишние escape
+    fixed = fixed.replace("“", '"').replace("”", '"')  # умные кавычки → обычные
+    fixed = fixed.replace("'", '"')  # одинарные кавычки → двойные
+
+    # пробуем снова
+    return json.loads(fixed)
+
 
 from .config import settings
 from .database import AsyncSessionLocal
@@ -384,7 +427,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if end_idx != -1:
                 cleaned_raw = cleaned_raw[:end_idx + 1]
         
-        data = json.loads(cleaned_raw)
+        data = safe_json_loads(raw) # Используем safe_json_loads
     except json.JSONDecodeError as e:
         await update.message.reply_text(
             f"❌ Ошибка парсинга JSON от модели\n\n"
@@ -571,7 +614,7 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
             if end_idx != -1:
                 cleaned_raw = cleaned_raw[:end_idx + 1]
         
-        data = json.loads(cleaned_raw)
+        data = safe_json_loads(raw) # Используем safe_json_loads
     except json.JSONDecodeError as e:
         await query.edit_message_text(
             f"❌ Ошибка парсинга JSON от модели\n\n"
@@ -688,7 +731,7 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
             if end_idx != -1:
                 cleaned_raw = cleaned_raw[:end_idx + 1]
         
-        data = json.loads(cleaned_raw)
+        data = safe_json_loads(raw) # Используем safe_json_loads
     except json.JSONDecodeError as e:
         await query.edit_message_text(
             f"❌ Ошибка парсинга JSON от модели\n\n"
