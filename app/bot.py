@@ -56,13 +56,29 @@ def safe_json_loads(raw: str):
     fixed = fixed.replace("“", '"').replace("”", '"')  # умные кавычки → обычные
     fixed = fixed.replace("'", '"')  # одинарные кавычки → двойные
 
-    # Попытка закрыть незавершенные строковые значения
-    # Ищем все незакрытые кавычки, за которыми не следует }, ], или "
-    # Этот паттерн довольно агрессивен и может потребовать доработки
-    fixed = re.sub(r'("[^"]*?)(?:$|[^\\"](?:\\\\"[^\\"]*)*$)', r'\1"}', fixed)
-    # Если после предыдущего шага в конце все еще нет '}', добавляем ее.
-    if not fixed.endswith('}'):
-        fixed += '}'
+    # Попытка закрыть незавершенные строковые значения и сбалансировать скобки
+    balance = 0
+    in_string = False
+    for i, char in enumerate(fixed):
+        if char == '"' and (i == 0 or fixed[i-1] != '\\'):
+            in_string = not in_string
+        elif not in_string:
+            if char == '{' or char == '[':
+                balance += 1
+            elif char == '}' or char == ']':
+                balance -= 1
+    
+    # Если строка оборвана внутри кавычек в конце, пытаемся закрыть
+    if in_string and fixed.endswith('...'):
+        fixed = fixed[:-3] + '"'
+    elif in_string:
+        fixed += '"'
+
+    # Балансируем открытые скобки
+    if balance > 0:
+        fixed += '}' * balance
+    elif balance < 0:
+        fixed = '{' * abs(balance) + fixed
 
     # пробуем снова
     return json.loads(fixed)
