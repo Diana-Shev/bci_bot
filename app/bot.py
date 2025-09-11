@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
+import aiohttp # Добавляем импорт aiohttp
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -162,11 +163,23 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await update.message.reply_text("📥 Скачиваю файл...")
         file = await doc.get_file()
-        print(f"DEBUG: Получен объект файла: {file}")
+        file_url = file.file_path # Получаем URL файла
         
-        # Используем стандартный метод загрузки (более надежный)
-        await file.download_to_drive(str(saved_path), timeout=120)
-        print(f"DEBUG: Файл скачан, проверяем существование...")
+        print(f"DEBUG: Получен объект файла: {file}")
+        print(f"DEBUG: file_size от doc: {doc.file_size}")
+        print(f"DEBUG: URL файла: {file_url}")
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(file_url, timeout=300) as response: # Устанавливаем таймаут для aiohttp
+                response.raise_for_status() # Проверяем на ошибки HTTP
+                with open(saved_path, "wb") as f:
+                    while True:
+                        chunk = await response.content.read(1024)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+        
+        print(f"DEBUG: Файл скачан с помощью aiohttp, проверяем существование...")
         
         # Проверяем, что файл действительно скачался
         if not saved_path.exists():
@@ -176,6 +189,23 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"DEBUG: Файл сохранен, размер: {file_size} байт")
         await update.message.reply_text("✅ Файл скачан успешно")
             
+    except aiohttp.ClientError as e:
+        error_msg = str(e)
+        file_size_info = ""
+        if doc.file_size:
+            file_size_info = f"Размер файла: {doc.file_size / (1024*1024):.1f}MB"
+        else:
+            file_size_info = "Размер файла: неизвестен"
+        
+        await update.message.reply_text(
+            f"❌ Ошибка загрузки файла через aiohttp\n\n"
+            f"Причина: {error_msg}\n\n"
+            f"Попробуйте:\n"
+            f"• Проверить интернет-соединение\n"
+            f"• Попробовать позже\n\n"
+            f"{file_size_info}"
+        )
+        return
     except Exception as e:
         error_msg = str(e)
         file_size_info = ""
@@ -198,7 +228,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(
                 f"❌ Ошибка загрузки файла\n\n"
-                f"Не удалось скачать файл с серверов Telegram.\n"
+                f"Не удалось скачать файл.\n"
                 f"Попробуйте:\n"
                 f"• Проверить интернет-соединение\n"
                 f"• Загрузить файл меньшего размера\n"
