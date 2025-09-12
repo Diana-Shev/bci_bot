@@ -53,13 +53,63 @@ def safe_json_loads(raw: str):
     # фиксируем частые ошибки: висящие кавычки, лишние запятые
     fixed = re.sub(r",\s*([}\]])", r"\1", cleaned)  # убираем запятую перед } или ]
     fixed = fixed.replace('\\"', '"')  # убираем лишние escape
-    fixed = fixed.replace("“", '"').replace("”", '"')  # умные кавычки → обычные
+    fixed = fixed.replace(""", '"').replace(""", '"')  # умные кавычки → обычные
     fixed = fixed.replace("'", '"')  # одинарные кавычки → двойные
 
     # Удаляем попытку закрыть незавершенные строковые значения и балансировать скобки
 
     # пробуем снова
     return json.loads(fixed)
+
+
+def format_full_report_json(json_text):
+    """
+    Преобразует JSON-ответ от LLM в красивый текстовый отчет.
+    Если ответ не JSON, возвращает его как есть.
+    """
+    try:
+        data = json.loads(json_text)
+    except Exception:
+        return json_text  # если не JSON, просто вернуть как есть
+
+    lines = []
+    if "productivity_periods" in data:
+        lines.append("Периоды максимальной продуктивности:")
+        for p in data["productivity_periods"]:
+            lines.append(f"- {p['start_time']}–{p['end_time']}: {p['recommended_activity']}")
+        lines.append("")
+
+    if "recovery_periods" in data:
+        lines.append("Периоды восстановления:")
+        for p in data["recovery_periods"]:
+            lines.append(f"- {p['start_time']}–{p['end_time']}: {p['recommended_activity']}")
+        lines.append("")
+
+    if "critical_alert_periods" in data:
+        lines.append("Критические периоды:")
+        for p in data["critical_alert_periods"]:
+            lines.append(f"- {p['start_time']}–{p['end_time']}: {p['issue']} (уровень: {p['alert_level']})")
+        lines.append("")
+
+    if "optimal_rest_times" in data:
+        lines.append("Оптимальное время для отдыха:")
+        for p in data["optimal_rest_times"]:
+            acts = ', '.join(p.get('activities', []))
+            lines.append(f"- {p['time']} ({p['type']}): {acts}")
+        lines.append("")
+
+    if "day_plan" in data:
+        lines.append("План дня:")
+        lines.append(data["day_plan"])
+        lines.append("")
+
+    if "improvement_suggestions" in data:
+        lines.append("Рекомендации по улучшению:")
+        for s in data["improvement_suggestions"]:
+            lines.append(f"- {s}")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 from .config import settings
@@ -535,7 +585,9 @@ async def cb_get_full_report(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     try:
         full_report_text = await analyze_metrics(prompt)
-        await query.message.reply_text(f"Вот ваш полный отчет:\n\n{full_report_text}")
+        # Преобразуем JSON-ответ в красивый текст, если он пришёл в формате JSON
+        formatted_report = format_full_report_json(full_report_text)
+        await query.message.reply_text(f"Вот ваш полный отчет:\n\n{formatted_report}")
     except Exception as e:
         await query.message.reply_text(f"❌ Ошибка при генерации полного отчета: {str(e)}")
 
