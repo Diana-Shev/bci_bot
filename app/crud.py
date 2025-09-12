@@ -11,7 +11,7 @@ async def get_or_create_user(session: AsyncSession, telegram_id: int, name: str 
     user = res.scalars().first()
     if user:
         return user
-    user = User(telegram_id=int(telegram_id), name=name, created_at=datetime.now(timezone.utc))
+    user = User(telegram_id=int(telegram_id), name=name, created_at=datetime.now())
     session.add(user)
     await session.commit()
     await session.refresh(user)
