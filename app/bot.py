@@ -564,23 +564,23 @@ async def cb_download_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     tg_id = query.from_user.id
     
-    async with AsyncSessionLocal() as session:
-        user = await get_or_create_user(session, telegram_id=tg_id, name=query.from_user.full_name)
-        periods = await get_productivity_periods(session, user.user_id)
+    # Получаем текст отчета из user_states
+    report_text = None
+    if tg_id in user_states and isinstance(user_states[tg_id], dict):
+        report_text = user_states[tg_id].get("last_report")
     
-    if not periods:
-        await query.edit_message_text("Нет сохранённых периодов. Пришлите файл с метриками сначала.")
+    if not report_text:
+        await query.edit_message_text("Нет сохранённого отчёта. Пришлите файл с метриками сначала.")
         return
     
-    # Создаем CSV файл
-    df = pd.DataFrame([{
-        "start_time": p.start_time.strftime("%H:%M") if p.start_time else "",
-        "end_time": p.end_time.strftime("%H:%M") if p.end_time else "",
-        "recommended_activity": p.recommended_activity or ""
-    } for p in periods])
-    
-    out_path = DOWNLOAD_DIR / f"{tg_id}_periods.csv"
-    df.to_csv(out_path, index=False)
+    out_path = DOWNLOAD_DIR / f"{tg_id}_report.csv"
+    # Сохраняем текст отчета в CSV (одна колонка, одна строка)
+    import csv
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Отчет"])
+        for line in report_text.splitlines():
+            writer.writerow([line])
     
     # Отправляем файл с обработкой таймаута
     try:
