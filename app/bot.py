@@ -582,7 +582,7 @@ async def cb_download_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Формируем CSV-файл, где каждая строка — строка текстового отчета
     out_path = DOWNLOAD_DIR / f"{tg_id}_report.csv"
     import csv
-    with open(out_path, "w", encoding="utf-8", newline="") as f:
+    with open(out_path, "w", encoding="cp1251", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Отчет"])
         for line in report_text.splitlines():
