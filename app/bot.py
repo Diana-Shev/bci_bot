@@ -363,7 +363,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
    - "productivity_periods": массив объектов с полями "start_time", "end_time", "recommended_activity".
    - "day_plan": строка с общим планом дня.
    - "improvement_suggestions": массив строк с советами по улучшению режима.
-3. Используй реальные значения из данных (приводи даты, время и показатели).
+3. Используй только время и показатели, не указывай даты (день, месяц, год).
 
 Пример ожидаемого JSON:
 ```json
@@ -468,6 +468,11 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if suggestions:
         msg += "\n\nПример советов:\n- " + "\n- ".join(suggestions[:3])
 
+    # После формирования переменной msg (текстовый отчет для пользователя):
+    user_states[tg_id] = {
+        "state": "analysis_complete",
+        "last_report": msg  # Сохраняем текст отчета для дальнейшей выгрузки
+    }
     await update.message.reply_text(msg, reply_markup=keyboard)
 
 async def cb_get_full_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -563,26 +568,27 @@ async def cb_download_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     tg_id = query.from_user.id
-    
-    # Получаем текст отчета из user_states
+
+    # Получаем текст отчета из user_states (он был сохранен после анализа)
     report_text = None
     if tg_id in user_states and isinstance(user_states[tg_id], dict):
         report_text = user_states[tg_id].get("last_report")
-    
+
+    # Если отчета нет — просим пользователя загрузить файл с метриками
     if not report_text:
         await query.edit_message_text("Нет сохранённого отчёта. Пришлите файл с метриками сначала.")
         return
-    
+
+    # Формируем CSV-файл, где каждая строка — строка текстового отчета
     out_path = DOWNLOAD_DIR / f"{tg_id}_report.csv"
-    # Сохраняем текст отчета в CSV (одна колонка, одна строка)
     import csv
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Отчет"])
         for line in report_text.splitlines():
             writer.writerow([line])
-    
-    # Отправляем файл с обработкой таймаута
+
+    # Отправляем файл пользователю
     try:
         with open(out_path, "rb") as f:
             await context.bot.send_document(chat_id=tg_id, document=f)
@@ -594,13 +600,13 @@ async def cb_download_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Ошибка: {str(e)}"
         )
         return
-    
+
     # Показываем кнопки для следующего шага
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Получить рекомендации по режиму дня", callback_data="get_recommendations")],
         [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
     ])
-    
+
     await query.message.reply_text(
         "Файл отправлен! Теперь можешь получить рекомендации по режиму дня.",
         reply_markup=keyboard
@@ -899,3 +905,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
