@@ -181,16 +181,27 @@ async def cb_ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Просто напишите ваш вопрос в следующем сообщении."
     )
 
+async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Единый обработчик текстовых сообщений"""
+    if not update.message or not update.message.text:
+        return
+    
+    tg_id = update.effective_user.id
+    current_state = user_states.get(tg_id)
+    
+    # Определяем, что делать с сообщением в зависимости от состояния
+    if current_state == "waiting_question":
+        await handle_question_input(update, context)
+    elif current_state == "waiting_iaf":
+        await handle_iaf_input(update, context)
+    # Если состояние не определено - игнорируем
+
 async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка вопроса пользователя к Deepseek"""
     if not update.message or not update.message.text:
         return
     
     tg_id = update.effective_user.id
-    
-    # Проверяем, что пользователь в состоянии ожидания вопроса
-    if user_states.get(tg_id) != "waiting_question":
-        return
     
     question = update.message.text
     name = update.effective_user.full_name
@@ -205,6 +216,7 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
 Пользователь задал вопрос: "{question}"
 
 Ответь на русском языке, подробно и научно обоснованно, в рамках твоей экспертизы.
+НЕ используй формат JSON, фигурные скобки или блоки кода. Отвечай обычным текстом.
 Если вопрос не связан с нейрофизиологией, BCI/ЭЭГ данными, альфа-ритмами, когнитивными функциями - 
 вежливо перенаправь к основной функции бота (анализ метрик).
 """
@@ -220,8 +232,7 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
         
         await update.message.reply_text(
             f"**Ответ Deepseek:**\n\n{answer}",
-            reply_markup=keyboard,
-            parse_mode='Markdown'
+            reply_markup=keyboard
         )
         
         # Возвращаем в состояние welcome для возможности задать новый вопрос
@@ -245,10 +256,6 @@ async def handle_iaf_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     tg_id = update.effective_user.id
-    
-    # Проверяем, что пользователь в состоянии ожидания IAF
-    if user_states.get(tg_id) != "waiting_iaf":
-        return
     
     try:
         iaf = float(update.message.text.replace(',', '.'))
@@ -1011,9 +1018,8 @@ def main():
     app.add_handler(CallbackQueryHandler(cb_get_full_report, pattern="^get_full_report$")) # Регистрируем новый обработчик
     app.add_handler(CallbackQueryHandler(cb_restart, pattern="^restart$"))
     
-    # Обработчики сообщений
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_question_input))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_iaf_input))
+    # Обработчики сообщений (важен порядок!)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     app.add_handler(MessageHandler(filters.Document.ALL, on_document))
     
     print("Bot is running...")
