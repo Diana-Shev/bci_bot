@@ -140,13 +140,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сбрасываем состояние пользователя
     user_states[tg_id] = "welcome"
     
-    # Создаем клавиатуру с кнопкой "Введи свои IAF"
+    # Создаем клавиатуру с кнопками
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Введи свои IAF", callback_data="input_iaf")]
+        [InlineKeyboardButton("Введи свои IAF", callback_data="input_iaf")],
+        [InlineKeyboardButton("Задать вопрос Deepseek", callback_data="ask_question")]
     ])
     
     await update.message.reply_text(
-        "Привет! Я помогу составить для тебя время продуктивности и отдыха",
+        "Привет! Я помогу составить для тебя время продуктивности и отдыха\n\n"
+        "Можешь задать вопрос по нейрофизиологии, BCI/ЭЭГ данным, альфа-ритмам и т.д., "
+        "или сразу начать анализ своих метрик.",
         reply_markup=keyboard
     )
 
@@ -163,6 +166,78 @@ async def cb_input_iaf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Например: 10.5 или 11.2\n\n"
         "Просто напиши число в следующем сообщении."
     )
+
+async def cb_ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка нажатия кнопки 'Задать вопрос Deepseek'"""
+    query = update.callback_query
+    await query.answer()
+    
+    tg_id = query.from_user.id
+    user_states[tg_id] = "waiting_question"
+    
+    await query.edit_message_text(
+        "Задайте свой вопрос по нейрофизиологии, BCI/ЭЭГ данным, альфа-ритмам, "
+        "когнитивным функциям, стрессу, концентрации и другим темам в рамках моей экспертизы.\n\n"
+        "Просто напишите ваш вопрос в следующем сообщении."
+    )
+
+async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка вопроса пользователя к Deepseek"""
+    if not update.message or not update.message.text:
+        return
+    
+    tg_id = update.effective_user.id
+    
+    # Проверяем, что пользователь в состоянии ожидания вопроса
+    if user_states.get(tg_id) != "waiting_question":
+        return
+    
+    question = update.message.text
+    name = update.effective_user.full_name
+    
+    await update.message.reply_text("🤔 Обрабатываю ваш вопрос...")
+    
+    # Формируем промпт для Deepseek
+    instruction = f"""
+Ты — эксперт в области нейрофизиологии и нейропсихофизиологии, специализирующийся на анализе BCI/ЭЭГ данных. 
+Используй подходы доказательной медицины и результаты исследований (Базановой Ольги Михайловны, Pfurtscheller, Klimesch и др.).
+
+Пользователь задал вопрос: "{question}"
+
+Ответь на русском языке, подробно и научно обоснованно, в рамках твоей экспертизы.
+Если вопрос не связан с нейрофизиологией, BCI/ЭЭГ данными, альфа-ритмами, когнитивными функциями - 
+вежливо перенаправь к основной функции бота (анализ метрик).
+"""
+    
+    try:
+        answer = await analyze_metrics(instruction)
+        
+        # Показываем ответ и кнопки
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Задать ещё вопрос", callback_data="ask_question")],
+            [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")]
+        ])
+        
+        await update.message.reply_text(
+            f"**Ответ Deepseek:**\n\n{answer}",
+            reply_markup=keyboard,
+            parse_mode='Markdown'
+        )
+        
+        # Возвращаем в состояние welcome для возможности задать новый вопрос
+        user_states[tg_id] = "welcome"
+        
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Ошибка при обработке вопроса: {str(e)}\n\n"
+            "Попробуйте ещё раз или перейдите к анализу метрик."
+        )
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Задать ещё вопрос", callback_data="ask_question")],
+            [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")]
+        ])
+        await update.message.reply_text("Что дальше?", reply_markup=keyboard)
 
 async def handle_iaf_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода IAF пользователем"""
@@ -905,11 +980,14 @@ async def cb_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[tg_id] = "welcome"
     
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Введи свои IAF", callback_data="input_iaf")]
+        [InlineKeyboardButton("Введи свои IAF", callback_data="input_iaf")],
+        [InlineKeyboardButton("Задать вопрос Deepseek", callback_data="ask_question")]
     ])
     
     await query.edit_message_text(
-        "Привет! Я помогу составить для тебя время продуктивности и отдыха",
+        "Привет! Я помогу составить для тебя время продуктивности и отдыха\n\n"
+        "Можешь задать вопрос по нейрофизиологии, BCI/ЭЭГ данным, альфа-ритмам и т.д., "
+        "или сразу начать анализ своих метрик.",
         reply_markup=keyboard
     )
 
@@ -925,6 +1003,7 @@ def main():
     
     # Обработчики кнопок
     app.add_handler(CallbackQueryHandler(cb_input_iaf, pattern="^input_iaf$"))
+    app.add_handler(CallbackQueryHandler(cb_ask_question, pattern="^ask_question$"))
     app.add_handler(CallbackQueryHandler(cb_upload_file, pattern="^upload_file$"))
     app.add_handler(CallbackQueryHandler(cb_download_csv, pattern="^download_csv$"))
     app.add_handler(CallbackQueryHandler(cb_get_recommendations, pattern="^get_recommendations$"))
@@ -933,6 +1012,7 @@ def main():
     app.add_handler(CallbackQueryHandler(cb_restart, pattern="^restart$"))
     
     # Обработчики сообщений
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_question_input))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_iaf_input))
     app.add_handler(MessageHandler(filters.Document.ALL, on_document))
     
