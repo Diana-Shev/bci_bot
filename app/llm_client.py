@@ -43,9 +43,11 @@ async def _call_deepseek(messages: list, model: str, max_tokens: int = 800, temp
     return data["choices"][0]["message"]["content"]
 
 async def analyze_metrics(prompt_text: str) -> str:
+    """
+    Аналитические запросы: просим строгий JSON.
+    """
     # Мок-ответ, если нет ни одного ключа
     if not settings.DEEPSEEK_API_KEY and not getattr(settings, "OPENROUTER_API_KEY", ""):
-        # детерминированный мок для тестирования
         mock = {
             "productivity_periods": [
                 {"start_time": "10:00", "end_time": "11:30", "recommended_activity": "Deep work: complex tasks"},
@@ -59,12 +61,29 @@ async def analyze_metrics(prompt_text: str) -> str:
             ]
         }
         return json.dumps(mock)
+
     messages = [
         {"role": "system", "content": "You are a helpful data analyst for EEG/BCI metrics. Answer in strict JSON only."},
         {"role": "user", "content": prompt_text},
     ]
-    # Если есть ключ OpenRouter — используем его, иначе DeepSeek API
+
     model = getattr(settings, "LLM_MODEL", DEFAULT_MODEL)
     if getattr(settings, "OPENROUTER_API_KEY", ""):
         return await _call_openrouter(messages, model=model)
     return await _call_deepseek(messages, model=model)
+
+
+async def chat_with_llm(messages: list, model: str | None = None, max_tokens: int = 800, temperature: float = 0.2) -> str:
+    """
+    Универсальный чат без навязывания JSON-формата. Сообщения должны включать системное сообщение при необходимости.
+    """
+    if not settings.DEEPSEEK_API_KEY and not getattr(settings, "OPENROUTER_API_KEY", ""):
+        # мок для Q&A: возвращаем простой текст
+        # берем последнее пользовательское сообщение и возвращаем заглушку
+        user_last = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "Ваш вопрос принят." )
+        return f"(мок) Я понял ваш вопрос: {user_last[:100]}... Дам развернутый ответ при наличии API-ключа."
+
+    use_model = model or getattr(settings, "LLM_MODEL", DEFAULT_MODEL)
+    if getattr(settings, "OPENROUTER_API_KEY", ""):
+        return await _call_openrouter(messages, model=use_model, max_tokens=max_tokens, temperature=temperature)
+    return await _call_deepseek(messages, model=use_model, max_tokens=max_tokens, temperature=temperature)

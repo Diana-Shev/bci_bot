@@ -53,7 +53,8 @@ def safe_json_loads(raw: str):
     # фиксируем частые ошибки: висящие кавычки, лишние запятые
     fixed = re.sub(r",\s*([}\]])", r"\1", cleaned)  # убираем запятую перед } или ]
     fixed = fixed.replace('\\"', '"')  # убираем лишние escape
-    fixed = fixed.replace(""", '"').replace(""", '"')  # умные кавычки → обычные
+    # умные кавычки → обычные
+    fixed = fixed.replace('“', '"').replace('”', '"').replace('«', '"').replace('»', '"')
     fixed = fixed.replace("'", '"')  # одинарные кавычки → двойные
 
     # Удаляем попытку закрыть незавершенные строковые значения и балансировать скобки
@@ -120,7 +121,7 @@ from .crud import (
     update_user_iaf
 )
 from .utils import parse_metrics_file, build_prompt_for_llm
-from .llm_client import analyze_metrics
+from .llm_client import analyze_metrics, chat_with_llm
 
 DOWNLOAD_DIR = Path(settings.DOWNLOADS_DIR)
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -142,7 +143,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Создаем клавиатуру с кнопками
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Введи свои IAF", callback_data="input_iaf")],
+        [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
         [InlineKeyboardButton("Задать вопрос Deepseek", callback_data="ask_question")]
     ])
     
@@ -209,20 +210,22 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text("🤔 Обрабатываю ваш вопрос...")
     
     # Формируем промпт для Deepseek
-    instruction = f"""
-Ты — эксперт в области нейрофизиологии и нейропсихофизиологии, специализирующийся на анализе BCI/ЭЭГ данных. 
-Используй подходы доказательной медицины и результаты исследований (Базановой Ольги Михайловны, Pfurtscheller, Klimesch и др.).
-
-Пользователь задал вопрос: "{question}"
-
-Ответь на русском языке, подробно и научно обоснованно, в рамках твоей экспертизы.
-НЕ используй формат JSON, фигурные скобки или блоки кода. Отвечай обычным текстом.
-Если вопрос не связан с нейрофизиологией, BCI/ЭЭГ данными, альфа-ритмами, когнитивными функциями - 
-вежливо перенаправь к основной функции бота (анализ метрик).
-"""
+    # История переписки для пользователя
+    history = context.chat_data.get("history", [])
+    if not history:
+        history = [
+            {"role": "system", "content": (
+                "Ты — эксперт по нейрофизиологии и нейропсихофизиологии. Отвечай на русском языком, "+
+                "кратко и по делу. Не используй JSON/фигурные скобки/блоки кода, только обычный текст." )}
+        ]
+    # Добавляем новое сообщение пользователя
+    history.append({"role": "user", "content": question})
     
     try:
-        answer = await analyze_metrics(instruction)
+        answer = await chat_with_llm(history, max_tokens=800, temperature=0.2)
+        # Обновляем историю: добавляем ответ ассистента и сохраняем
+        history.append({"role": "assistant", "content": answer})
+        context.chat_data["history"] = history[-20:]
         
         # Показываем ответ и кнопки
         keyboard = InlineKeyboardMarkup([
@@ -230,10 +233,7 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")]
         ])
         
-        await update.message.reply_text(
-            f"**Ответ Deepseek:**\n\n{answer}",
-            reply_markup=keyboard
-        )
+        await update.message.reply_text(f"Ответ Deepseek:\n\n{answer}", reply_markup=keyboard)
         
         # Возвращаем в состояние welcome для возможности задать новый вопрос
         user_states[tg_id] = "welcome"
@@ -587,7 +587,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Показываем результаты и кнопки
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📥 Загрузить файл", callback_data="download_csv")],
+        [InlineKeyboardButton("📥 Скачать превью (CSV)", callback_data="download_csv")],
         [InlineKeyboardButton("Получить рекомендации по режиму дня", callback_data="get_recommendations")],
         [InlineKeyboardButton("Получить полный отчет", callback_data="get_full_report")], # Новая кнопка
         [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
@@ -987,7 +987,7 @@ async def cb_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[tg_id] = "welcome"
     
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Введи свои IAF", callback_data="input_iaf")],
+        [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
         [InlineKeyboardButton("Задать вопрос Deepseek", callback_data="ask_question")]
     ])
     
