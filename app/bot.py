@@ -162,10 +162,18 @@ async def cb_input_iaf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = query.from_user.id
     user_states[tg_id] = "waiting_iaf"
     
-    await query.edit_message_text(
-        "Пожалуйста, введи свою индивидуальную альфа-частоту (IAF) в Гц.\n"
-        "Например: 10.5 или 11.2\n\n"
-        "Просто напиши число в следующем сообщении."
+    # Не перезаписываем прошлое сообщение, чтобы не казалось, что ответ удалился
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await context.bot.send_message(
+        chat_id=tg_id,
+        text=(
+            "Пожалуйста, введи свою индивидуальную альфа-частоту (IAF) в Гц.\n"
+            "Например: 10.5 или 11.2\n\n"
+            "Просто напиши число в следующем сообщении."
+        )
     )
 
 async def cb_ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -176,10 +184,18 @@ async def cb_ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = query.from_user.id
     user_states[tg_id] = "waiting_question"
     
-    await query.edit_message_text(
-        "Задайте свой вопрос по нейрофизиологии, BCI/ЭЭГ данным, альфа-ритмам, "
-        "когнитивным функциям, стрессу, концентрации и другим темам в рамках моей экспертизы.\n\n"
-        "Просто напишите ваш вопрос в следующем сообщении."
+    # Не перезаписываем прошлые ответы — очищаем клавиатуру и шлём новое сообщение
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await context.bot.send_message(
+        chat_id=tg_id,
+        text=(
+            "Задайте свой вопрос по нейрофизиологии, BCI/ЭЭГ данным, альфа-ритмам, "
+            "когнитивным функциям, стрессу, концентрации и другим темам в рамках моей экспертизы.\n\n"
+            "Просто напишите ваш вопрос в следующем сообщении."
+        )
     )
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,9 +275,9 @@ async def handle_iaf_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         iaf = float(update.message.text.replace(',', '.'))
-        if iaf < 7.0 or iaf > 14.0:
+        if iaf < 7.0 or iaf > 13.0:
             await update.message.reply_text(
-                "IAF должен быть в диапазоне 7-14 Гц. Попробуй еще раз."
+                "IAF должен быть в диапазоне 7-13 Гц. Попробуй еще раз."
             )
             return
     except ValueError:
@@ -598,7 +614,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if day_plan:
         msg += f"\n\nПлан дня:\n{day_plan}"
     if suggestions:
-        msg += "\n\nПример советов:\n- " + "\n- ".join(suggestions[:3])
+        msg += "\n\nРекомендации и советы:\n- " + "\n- ".join(suggestions[:3])
 
     # После формирования переменной msg (текстовый отчет для пользователя):
     user_states[tg_id] = {
