@@ -231,8 +231,10 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
     if not history:
         history = [
             {"role": "system", "content": (
-                "Ты — эксперт по нейрофизиологии и нейропсихофизиологии. Отвечай на русском языком, "+
-                "кратко и по делу. Не используй JSON/фигурные скобки/блоки кода, только обычный текст." )}
+                "Ты — эксперт по нейрофизиологии и нейропсихофизиологии. Отвечай на русском, кратко и по делу. "
+                "Не используй JSON/фигурные скобки/блоки кода, только обычный текст. "
+                "Если вопрос не относится к нейрофизиологии, ЭЭГ/BCI, альфа-ритмам, когнитивным функциям, стрессу, "
+                "концентрации или восстановлению – вежливо откажись отвечать и предложи перейти к анализу метрик, либо пусть задаст вопрос в рамках темы." )}
         ]
     # Добавляем новое сообщение пользователя
     history.append({"role": "user", "content": question})
@@ -249,7 +251,7 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")]
         ])
         
-        await update.message.reply_text(f"Ответ Deepseek:\n\n{answer}", reply_markup=keyboard)
+        await update.message.reply_text(f"Ответ ai-neiry:\n\n{answer}", reply_markup=keyboard)
         
         # Возвращаем в состояние welcome для возможности задать новый вопрос
         user_states[tg_id] = "welcome"
@@ -329,17 +331,21 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     tg_id = update.effective_user.id
     
-    # Проверяем, что пользователь в состоянии ожидания файла
+    # Проверяем состояние, но корректно подсказываем и показываем кнопку
     if user_states.get(tg_id) != "waiting_file":
-        await update.message.reply_text("Сначала нажми 'Загрузи файл с метриками'")
+        if not update.message.document.file_name.lower().endswith((".csv", ".xlsx")):
+            await update.message.reply_text("❌ Файл неверного формата. Поддерживаются только CSV или XLSX.")
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📎 Прикрепить файл", callback_data="upload_file")]])
+        await update.message.reply_text("Сначала нажмите 'Прикрепить файл' и отправьте CSV/XLSX.", reply_markup=keyboard)
         return
     
     doc = update.message.document
     name = update.effective_user.full_name
     
     # Проверяем расширение файла
-    if not doc.file_name.lower().endswith(('.csv', '.xlsx')):
-        await update.message.reply_text("Поддерживаются только файлы CSV и XLSX")
+    if not doc.file_name.lower().endswith((".csv", ".xlsx")):
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📎 Прикрепить файл", callback_data="upload_file")]])
+        await update.message.reply_text("❌ Файл неверного формата. Поддерживаются только CSV или XLSX.", reply_markup=keyboard)
         return
     
     # Проверяем размер файла (максимум 20MB)
@@ -1023,6 +1029,21 @@ def main():
     
     # Обработчики команд
     app.add_handler(CommandHandler("start", cmd_start))
+    # Быстрая проверка состояния БД
+    async def db_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        from .database import AsyncSessionLocal
+        from .models import User, Metric, ProductivityPeriod, DailyRecommendation, ImprovementSuggestion
+        async with AsyncSessionLocal() as session:
+            from sqlalchemy import func
+            u = (await session.execute(func.count(User.user_id))).scalar()
+            m = (await session.execute(func.count(Metric.id))).scalar()
+            p = (await session.execute(func.count(ProductivityPeriod.id))).scalar()
+            d = (await session.execute(func.count(DailyRecommendation.id))).scalar()
+            i = (await session.execute(func.count(ImprovementSuggestion.id))).scalar()
+        await update.message.reply_text(
+            f"Статистика БД:\nUsers: {u}\nMetrics: {m}\nProductivityPeriods: {p}\nDailyRecommendations: {d}\nImprovementSuggestions: {i}"
+        )
+    app.add_handler(CommandHandler("db_stats", db_stats))
     
     # Обработчики кнопок
     app.add_handler(CallbackQueryHandler(cb_input_iaf, pattern="^input_iaf$"))
