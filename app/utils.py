@@ -119,7 +119,7 @@ def parse_metrics_file(path: str) -> tuple[List[Dict], str]:
     return rows, "success"
 
 
-def build_prompt_for_llm(user_name: str, metrics_rows: list, instruction: str, display_utc: bool = False) -> str:
+def build_prompt_for_llm(user_name: str, metrics_rows: list, instruction: str, display_utc: bool = False, iaf_hz: float | None = None) -> str:
     """
     Формирует текст-подсказку для LLM на основе всех метрик пользователя.
     display_utc: если True — выводит UTC, иначе локальное время.
@@ -148,10 +148,11 @@ def build_prompt_for_llm(user_name: str, metrics_rows: list, instruction: str, d
 
     table_text = "\n".join(lines)
 
+    iaf_line = f"Individual Alpha Frequency (IAF): {iaf_hz:.2f} Hz\n" if iaf_hz is not None else ""
     prompt = f"""
 You analyze EEG/BCI metrics and produce actionable schedules.
 User: {user_name}
-
+{iaf_line}
 Metrics (time | key:value):
 {table_text}
 

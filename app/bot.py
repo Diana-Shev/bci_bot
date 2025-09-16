@@ -534,10 +534,18 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
 
 
+    # Передаём IAF пользователем в промпт, если он есть
+    iaf_value = None
+    try:
+        iaf_value = float(user.iaf) if getattr(user, "iaf", None) is not None else None
+    except Exception:
+        iaf_value = None
+
     prompt = build_prompt_for_llm(
         user_name=name,
         metrics_rows=rows,
-        instruction=instruction
+        instruction=instruction,
+        iaf_hz=iaf_value
     )
 
     try:
@@ -681,10 +689,17 @@ async def cb_get_full_report(update: Update, context: ContextTypes.DEFAULT_TYPE)
 7. Избегай общих фраз, используй конкретику из данных.
 """
 
+    iaf_value = None
+    try:
+        iaf_value = float(user.iaf) if getattr(user, "iaf", None) is not None else None
+    except Exception:
+        iaf_value = None
+
     prompt = build_prompt_for_llm(
         user_name=name,
         metrics_rows=rows,
-        instruction=instruction
+        instruction=instruction,
+        iaf_hz=iaf_value
     )
 
     try:
@@ -787,6 +802,13 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
         })
     
     # Получаем рекомендации от LLM
+    # Добавим IAF в промпт
+    iaf_value = None
+    try:
+        iaf_value = float(user.iaf) if getattr(user, "iaf", None) is not None else None
+    except Exception:
+        iaf_value = None
+
     prompt = build_prompt_for_llm(
         user_name=query.from_user.full_name, 
         metrics_rows=rows,
@@ -804,8 +826,7 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
 {"day_plan": "1. Утренний подъем (7:00-7:30): Легкая зарядка, медитация. 2. Продуктивная работа (9:00-12:00): Сосредоточенные задачи..."}
 ```
 """
-
-    )
+    , iaf_hz=iaf_value)
     
     try:
         raw = await analyze_metrics(prompt)
@@ -908,6 +929,12 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
         })
     
     # Получаем улучшения от LLM
+    iaf_value = None
+    try:
+        iaf_value = float(user.iaf) if getattr(user, "iaf", None) is not None else None
+    except Exception:
+        iaf_value = None
+
     prompt = build_prompt_for_llm(
         user_name=query.from_user.full_name, 
         metrics_rows=rows,
@@ -925,8 +952,7 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
 {"improvement_suggestions": ["1. Увеличьте продолжительность сна на 30 минут.", "2. Включите короткие перерывы в работу..."]}
 ```
 """
-
-    )
+    , iaf_hz=iaf_value)
     
     try:
         raw = await analyze_metrics(prompt)
