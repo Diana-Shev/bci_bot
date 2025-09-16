@@ -154,6 +154,32 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard
     )
 
+async def cmd_db_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для проверки состояния БД"""
+    try:
+        from .models import User, Metric, ProductivityPeriod, DailyRecommendation, ImprovementSuggestion
+        from sqlalchemy import func
+        
+        async with AsyncSessionLocal() as session:
+            u = (await session.execute(func.count(User.user_id))).scalar() or 0
+            m = (await session.execute(func.count(Metric.id))).scalar() or 0
+            p = (await session.execute(func.count(ProductivityPeriod.id))).scalar() or 0
+            d = (await session.execute(func.count(DailyRecommendation.id))).scalar() or 0
+            i = (await session.execute(func.count(ImprovementSuggestion.id))).scalar() or 0
+        
+        await update.message.reply_text(
+            f"📊 Статистика БД:\n\n"
+            f"👥 Пользователи: {u}\n"
+            f"📈 Метрики: {m}\n"
+            f"⏰ Периоды продуктивности: {p}\n"
+            f"📅 Рекомендации: {d}\n"
+            f"💡 Советы по улучшению: {i}"
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Ошибка при получении статистики БД:\n\n{str(e)}"
+        )
+
 async def cb_input_iaf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка нажатия кнопки 'Введи свои IAF'"""
     query = update.callback_query
@@ -1096,21 +1122,7 @@ def main():
     
     # Обработчики команд
     app.add_handler(CommandHandler("start", cmd_start))
-    # Быстрая проверка состояния БД
-    async def db_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        from .database import AsyncSessionLocal
-        from .models import User, Metric, ProductivityPeriod, DailyRecommendation, ImprovementSuggestion
-        async with AsyncSessionLocal() as session:
-            from sqlalchemy import func
-            u = (await session.execute(func.count(User.user_id))).scalar()
-            m = (await session.execute(func.count(Metric.id))).scalar()
-            p = (await session.execute(func.count(ProductivityPeriod.id))).scalar()
-            d = (await session.execute(func.count(DailyRecommendation.id))).scalar()
-            i = (await session.execute(func.count(ImprovementSuggestion.id))).scalar()
-        await update.message.reply_text(
-            f"Статистика БД:\nUsers: {u}\nMetrics: {m}\nProductivityPeriods: {p}\nDailyRecommendations: {d}\nImprovementSuggestions: {i}"
-        )
-    app.add_handler(CommandHandler("db_stats", db_stats))
+    app.add_handler(CommandHandler("db_stats", cmd_db_stats))
     
     # Обработчики кнопок
     app.add_handler(CallbackQueryHandler(cb_input_iaf, pattern="^input_iaf$"))
