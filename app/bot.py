@@ -144,7 +144,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Создаем клавиатуру с кнопками
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
-        [InlineKeyboardButton("Задать вопрос Deepseek", callback_data="ask_question")]
+        [InlineKeyboardButton("Задать вопрос ai-neiry", callback_data="ask_question")]
     ])
     
     await update.message.reply_text(
@@ -177,7 +177,7 @@ async def cb_input_iaf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def cb_ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка нажатия кнопки 'Задать вопрос Deepseek'"""
+    """Обработка нажатия кнопки 'Задать вопрос ai-neiry'"""
     query = update.callback_query
     await query.answer()
     
@@ -214,7 +214,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Если состояние не определено - игнорируем
 
 async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка вопроса пользователя к Deepseek"""
+    """Обработка вопроса пользователя к ai-neiry"""
     if not update.message or not update.message.text:
         return
     
@@ -513,25 +513,15 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ⚠️ Требования к результату:
 1. Ответ должен быть строго на русском языке.
-2. Результат должен быть СТРОГО в JSON формате. JSON должен содержать следующие ключи:
-   - "productivity_periods": массив объектов с полями "start_time", "end_time", "recommended_activity".
-   - "day_plan": строка с общим планом дня.
-   - "improvement_suggestions": массив строк с советами по улучшению режима.
-3. Используй только время и показатели, не указывай даты (день, месяц, год).
-
-Пример ожидаемого JSON:
-```json
-{
-  "productivity_periods": [
-    {"start_time": "09:00", "end_time": "11:00", "recommended_activity": "Высокоинтенсивная работа"}
-  ],
-  "day_plan": "Общий план дня...",
-  "improvement_suggestions": [
-    "Совет 1", "Совет 2"
-  ]
-}
-```
+2. Верни полный текстовый отчет, структурированный по разделам, с абзацами и списками, без использования формата JSON.
+3. Каждый раздел должен быть озаглавлен, внутри разделов используй абзацы и, если нужно, маркированные или нумерованные списки.
+4. Не используй форматирование кода, не заключай ответ в кавычки или блоки.
+5. Используй реальные значения из данных (приводи только время и показатели, не указывай даты).
+6. Отчет должен быть подробным, с пояснениями и ссылками на научные эффекты (например, влияние альфа-ритма на внимание).
+7. Избегай общих фраз, используй конкретику из данных.
+8. Структурируй отчет как: "Периоды максимальной продуктивности:", "План дня:", "Рекомендации и советы:" - аналогично короткому отчету, но с подробными объяснениями.
 """
+
 
 
     # Передаём IAF пользователем в промпт, если он есть
@@ -1035,7 +1025,7 @@ async def cb_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
-        [InlineKeyboardButton("Задать вопрос Deepseek", callback_data="ask_question")]
+        [InlineKeyboardButton("Задать вопрос ai-neiry", callback_data="ask_question")]
     ])
     
     await query.edit_message_text(
