@@ -687,6 +687,7 @@ async def cb_get_full_report(update: Update, context: ContextTypes.DEFAULT_TYPE)
 5. Используй реальные значения из данных (приводи только время и показатели, не указывай даты).
 6. Отчет должен быть подробным, с пояснениями и ссылками на научные эффекты (например, влияние альфа-ритма на внимание).
 7. Избегай общих фраз, используй конкретику из данных.
+8. Структурируй отчет как: "Периоды максимальной продуктивности:", "План дня:", "Рекомендации и советы:" - аналогично короткому отчету, но с подробными объяснениями.
 """
 
     iaf_value = None
@@ -703,10 +704,8 @@ async def cb_get_full_report(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
     try:
-        full_report_text = await analyze_metrics(prompt)
-        # Преобразуем JSON-ответ в красивый текст, если он пришёл в формате JSON
-        formatted_report = format_full_report_json(full_report_text)
-        await query.message.reply_text(f"Вот ваш полный отчет:\n\n{formatted_report}")
+        full_report_text = await chat_with_llm([{"role": "user", "content": prompt}], max_tokens=1200, temperature=0.2)
+        await query.message.reply_text(f"Вот ваш полный отчет:\n\n{full_report_text}")
     except Exception as e:
         await query.message.reply_text(f"❌ Ошибка при генерации полного отчета: {str(e)}")
 
