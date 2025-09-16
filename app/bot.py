@@ -317,7 +317,6 @@ async def cb_upload_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Прикрепи файл с метриками (CSV или XLSX).\n\n"
         "Файл должен содержать колонки:\n"
         "• timestamp - время измерения\n"
-        "• cognitive_score - когнитивный скор\n"
         "• focus - концентрация\n"
         "• chill - расслабление\n"
         "• stress - стресс\n"
@@ -669,15 +668,25 @@ async def cb_get_full_report(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 Задача: провести глубокий анализ предоставленных метрик (когнитивный балл, фокус, стресс, самоконтроль, индекс релаксации, индекс концентрации, усталость, обратная усталость, альфа-гравитация, ЧСС) с учётом временной структуры и активности (рабочие задачи, тренировки альфа-ритма(если они есть)).
 
-⚠️ Требования к результату:
-1. Ответ должен быть СТРОГО на русском языке.
-2. Верни полный текстовый отчет, структурированный по разделам, с абзацами и списками, без использования формата JSON.
-3. Каждый раздел должен быть озаглавлен, внутри разделов используй абзацы и, если нужно, маркированные или нумерованные списки.
-4. Не используй форматирование кода, не заключай ответ в кавычки или блоки.
-5. Используй реальные значения из данных (приводи только время и показатели, не указывай даты).
-6. Отчет должен быть подробным, с пояснениями и ссылками на научные эффекты (например, влияние альфа-ритма на внимание).
-7. Избегай общих фраз, используй конкретику из данных.
-8. Структурируй отчет как: "Периоды максимальной продуктивности:", "План дня:", "Рекомендации и советы:" - аналогично короткому отчету, но с подробными объяснениями.
+⚠️ КРИТИЧЕСКИ ВАЖНО:
+- НЕ используй JSON, фигурные скобки {}, кавычки "", блоки кода ``` или любые технические форматы
+- Отвечай ТОЛЬКО обычным русским текстом
+- Структурируй ответ точно так же, как короткий отчёт, но с подробными объяснениями
+
+Формат ответа (строго соблюдай):
+Периоды максимальной продуктивности:
+- 09:00–11:00: [описание активности с объяснением почему это время оптимально]
+- 15:54–15:56: [описание активности с объяснением]
+
+План дня:
+[подробный план с объяснениями научных обоснований]
+
+Рекомендации и советы:
+- [совет 1 с объяснением]
+- [совет 2 с объяснением]
+- [совет 3 с объяснением]
+
+Используй реальные значения из данных, избегай общих фраз, давай конкретные рекомендации.
 """
 
     iaf_value = None
@@ -695,7 +704,50 @@ async def cb_get_full_report(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     try:
         full_report_text = await chat_with_llm([{"role": "user", "content": prompt}], max_tokens=1200, temperature=0.2)
-        await query.message.reply_text(f"Вот ваш полный отчет:\n\n{full_report_text}")
+        
+        # Дополнительная очистка от JSON, если модель всё ещё его вернула
+        cleaned_text = full_report_text.strip()
+        
+        # Убираем блоки кода и JSON
+        if cleaned_text.startswith("```"):
+            cleaned_text = cleaned_text.split("```", 2)[1] if "```" in cleaned_text[3:] else cleaned_text[3:]
+        if cleaned_text.endswith("```"):
+            cleaned_text = cleaned_text.rsplit("```", 1)[0]
+        
+        # Убираем фигурные скобки в начале и конце
+        if cleaned_text.startswith("{"):
+            start_idx = cleaned_text.find("{")
+            end_idx = cleaned_text.rfind("}")
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                # Если это JSON, пытаемся извлечь содержимое
+                try:
+                    import json
+                    json_data = json.loads(cleaned_text[start_idx:end_idx+1])
+                    # Форматируем как обычный текст
+                    lines = []
+                    if "productivity_periods" in json_data:
+                        lines.append("Периоды максимальной продуктивности:")
+                        for p in json_data["productivity_periods"]:
+                            lines.append(f"- {p.get('start_time', '?')}–{p.get('end_time', '?')}: {p.get('recommended_activity', '')}")
+                        lines.append("")
+                    
+                    if "day_plan" in json_data:
+                        lines.append("План дня:")
+                        lines.append(json_data["day_plan"])
+                        lines.append("")
+                    
+                    if "improvement_suggestions" in json_data:
+                        lines.append("Рекомендации и советы:")
+                        for s in json_data["improvement_suggestions"]:
+                            lines.append(f"- {s}")
+                        lines.append("")
+                    
+                    cleaned_text = "\n".join(lines)
+                except:
+                    # Если не JSON, просто убираем скобки
+                    cleaned_text = cleaned_text.strip("{}")
+        
+        await query.message.reply_text(f"Вот ваш полный отчет:\n\n{cleaned_text}")
     except Exception as e:
         await query.message.reply_text(f"❌ Ошибка при генерации полного отчета: {str(e)}")
 
