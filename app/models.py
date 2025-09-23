@@ -24,7 +24,6 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(100), unique=True, nullable=True)
     iaf: Mapped[float] = mapped_column(Numeric(4, 2), nullable=True)  # Individual Alpha Frequency
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now())
-
     # связи
     metrics: Mapped[List["Metric"]] = relationship(back_populates="user")
     recommendations: Mapped[List["DailyRecommendation"]] = relationship(back_populates="user")
