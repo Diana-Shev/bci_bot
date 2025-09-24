@@ -180,6 +180,7 @@ user_states = {}
 # Глобальный планировщик и реестр задач для пользователей
 scheduler = AsyncIOScheduler()
 user_period_jobs: dict[int, List[str]] = {}
+notifications_enabled_users: set[int] = set()
 
 async def _send_period_notification(bot, tg_id: int, text: str):
     try:
@@ -216,6 +217,29 @@ async def _schedule_user_periods(bot, tg_id: int):
             misfire_grace_time=60
         )
         user_period_jobs[tg_id].append(job_id)
+
+async def _unschedule_user_periods(tg_id: int):
+    if tg_id in user_period_jobs:
+        for job_id in user_period_jobs[tg_id]:
+            try:
+                scheduler.remove_job(job_id)
+            except Exception:
+                pass
+        user_period_jobs[tg_id] = []
+
+async def cb_toggle_notifications(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    tg_id = query.from_user.id
+
+    if tg_id in notifications_enabled_users:
+        await _unschedule_user_periods(tg_id)
+        notifications_enabled_users.discard(tg_id)
+        await query.message.reply_text("🔕 Напоминания по режиму дня отключены.")
+    else:
+        await _schedule_user_periods(context.bot, tg_id)
+        notifications_enabled_users.add(tg_id)
+        await query.message.reply_text("🔔 Напоминания по режиму дня включены. Я буду писать в начале каждого периода.")
 
 async def _init_schedule_all_users(bot):
     async with AsyncSessionLocal() as session:
@@ -1069,6 +1093,8 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
     # Показываем рекомендации и кнопки для следующего шага
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Улучшить режим дня", callback_data="improve_schedule")],
+        [InlineKeyboardButton("Задать вопрос ai-neiry", callback_data="ask_question")],
+        [InlineKeyboardButton("🔔 Включить/выключить напоминания", callback_data="toggle_notifications")],
         [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
     ])
     
@@ -1258,6 +1284,7 @@ def main():
     app.add_handler(CallbackQueryHandler(cb_get_recommendations, pattern="^get_recommendations$"))
     app.add_handler(CallbackQueryHandler(cb_improve_schedule, pattern="^improve_schedule$"))
     app.add_handler(CallbackQueryHandler(cb_get_full_report, pattern="^get_full_report$")) # Регистрируем новый обработчик
+    app.add_handler(CallbackQueryHandler(cb_toggle_notifications, pattern="^toggle_notifications$"))
     app.add_handler(CallbackQueryHandler(cb_restart, pattern="^restart$"))
     
     # Обработчики сообщений (важен порядок!)
