@@ -14,6 +14,49 @@ from telegram.ext import (
 import re
 
 
+# --- Helpers для времени и периодов ---
+from datetime import time as dtime
+from typing import Optional, List
+
+async def _find_period_for_time(session, user_id: int, t: dtime):
+    from .crud import get_productivity_periods
+    periods = await get_productivity_periods(session, user_id)
+    for p in periods:
+        # период включает начало и исключает конец
+        if p.start_time <= t < p.end_time:
+            return p
+    # если не нашли, вернем ближайший следующий период
+    next_period = None
+    for p in periods:
+        if p.start_time > t and (next_period is None or p.start_time < next_period.start_time):
+            next_period = p
+    return next_period
+
+
+def _extract_time_from_question(text: str) -> Optional[dtime]:
+    # Ищем время формата 17:00, 9:30, 17.00, 9.30
+    m = re.search(r"(\d{1,2})[:.](\d{2})", text)
+    if not m:
+        return None
+    hh = int(m.group(1))
+    mm = int(m.group(2))
+    if 0 <= hh <= 23 and 0 <= mm <= 59:
+        return dtime(hour=hh, minute=mm)
+    return None
+
+
+def _augment_prompt_with_period(base_text: str, period) -> str:
+    if not period:
+        return base_text
+    period_text = (
+        f"\n\nКонтекст режима дня пользователя: "
+        f"период {period.start_time.strftime('%H:%M')}–{period.end_time.strftime('%H:%M')}, "
+        f"рекомендованная активность: {period.recommended_activity or 'без описания'}.\n"
+    )
+    return base_text + period_text
+
+
+
 def safe_json_loads(raw: str):
     """
     Попытка безопасно распарсить JSON из ответа модели.
@@ -61,6 +104,7 @@ def safe_json_loads(raw: str):
 
     # пробуем снова
     return json.loads(fixed)
+
 
 
 def format_full_report_json(json_text):
@@ -118,7 +162,7 @@ from .database import AsyncSessionLocal
 from .crud import (
     get_or_create_user, save_metrics_bulk, save_productivity_periods,
     get_productivity_periods, get_user_metrics, save_day_plan, save_improvement_suggestions,
-    update_user_iaf
+    update_user_iaf, get_all_users
 )
 from .utils import parse_metrics_file, build_prompt_for_llm
 from .llm_client import analyze_metrics, chat_with_llm
@@ -128,6 +172,54 @@ DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Состояния пользователей
 user_states = {}
+
+# Хранилище job-ов уведомлений по пользователям
+user_period_jobs = {}
+
+async def _send_period_notification(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    data = job.data or {}
+    tg_id = data.get("tg_id")
+    text = data.get("text")
+    if tg_id and text:
+        try:
+            await context.bot.send_message(chat_id=tg_id, text=text)
+        except Exception:
+            pass
+
+async def _schedule_user_periods(application: Application, tg_id: int):
+    # удаляем предыдущие job-ы пользователя
+    if tg_id in user_period_jobs:
+        for job in user_period_jobs[tg_id]:
+            try:
+                job.schedule_removal()
+            except Exception:
+                pass
+        user_period_jobs[tg_id] = []
+    else:
+        user_period_jobs[tg_id] = []
+
+    async with AsyncSessionLocal() as session:
+        user = await get_or_create_user(session, telegram_id=tg_id, name=None)
+        periods = await get_productivity_periods(session, user.user_id)
+
+    # создаем ежедневные уведомления для каждого периода
+    for p in periods:
+        text = f"Напоминание: {p.recommended_activity or 'запланированная активность'} (с {p.start_time.strftime('%H:%M')} до {p.end_time.strftime('%H:%M')})"
+        job = application.job_queue.run_daily(
+            _send_period_notification,
+            time=dtime(hour=p.start_time.hour, minute=p.start_time.minute),
+            data={"tg_id": tg_id, "text": text},
+            name=f"period_{tg_id}_{p.start_time.strftime('%H%M')}"
+        )
+        user_period_jobs[tg_id].append(job)
+
+async def _init_schedule_all_users(application: Application):
+    async with AsyncSessionLocal() as session:
+        users = await get_all_users(session)
+    for u in users:
+        await _schedule_user_periods(application, u.telegram_id)
+
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начальная команда - показывает экран приветствия"""
@@ -251,7 +343,7 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
     
     await update.message.reply_text("🤔 Обрабатываю ваш вопрос...")
     
-    # Формируем промпт для Deepseek
+    # Формируем промпт для Deepseek с учетом режима дня
     # История переписки для пользователя
     history = context.chat_data.get("history", [])
     if not history:
@@ -262,8 +354,19 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
                 "Если вопрос не относится к нейрофизиологии, ЭЭГ/BCI, альфа-ритмам, когнитивным функциям, стрессу, "
                 "концентрации или восстановлению – вежливо откажись отвечать и предложи перейти к анализу метрик, либо пусть задаст вопрос в рамках темы." )}
         ]
-    # Добавляем новое сообщение пользователя
-    history.append({"role": "user", "content": question})
+    # Добавляем новое сообщение пользователя (с доп. контекстом периода)
+    period_time = _extract_time_from_question(question) or datetime.now().time()
+    augmented_question = question
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_or_create_user(session, telegram_id=tg_id, name=name)
+            period = await _find_period_for_time(session, user.user_id, period_time)
+        if period:
+            augmented_question = _augment_prompt_with_period(question, period)
+    except Exception:
+        pass
+
+    history.append({"role": "user", "content": augmented_question})
     
     try:
         answer = await chat_with_llm(history, max_tokens=800, temperature=0.2)
@@ -566,7 +669,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         raw = await analyze_metrics(prompt)
         
-
+        
         
         # Очищаем ответ от лишних символов и форматирования
         cleaned_raw = raw.strip()
@@ -627,6 +730,12 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with AsyncSessionLocal() as session:
         await save_productivity_periods(session, user.user_id, periods)
 
+    # Пересоздаём уведомления для пользователя по его периодам
+    try:
+        await _schedule_user_periods(context.application, tg_id)
+    except Exception:
+        pass
+
     # Меняем состояние
     user_states[tg_id] = "analysis_complete"
     
@@ -637,14 +746,14 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Получить полный отчет", callback_data="get_full_report")], # Новая кнопка
         [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
     ])
-
+    
     preview = "\n".join([f"{p.get('start_time','?')}–{p.get('end_time','?')}: {p.get('recommended_activity','')}" for p in periods[:5]]) or "LLM не нашёл явных периодов."
     msg = f"Анализ завершен! Найдено {len(periods)} периодов.\n\nПревью:\n{preview}"
     if day_plan:
         msg += f"\n\nПлан дня:\n{day_plan}"
     if suggestions:
         msg += "\n\nРекомендации и советы:\n- " + "\n- ".join(suggestions[:3])
-
+    
     # После формирования переменной msg (текстовый отчет для пользователя):
     user_states[tg_id] = {
         "state": "analysis_complete",
@@ -1113,12 +1222,16 @@ async def cb_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard
     )
 
+
 def main():
     app = Application.builder().token(settings.BOT_TOKEN).build()
     
     # Увеличиваем таймауты для загрузки файлов
     app.bot.request.timeout = 300  # 5 минут для больших файлов
     app.bot.request.connect_timeout = 60  # 1 минута на подключение
+    
+    # Планировщик: инициализация расписаний для всех пользователей после запуска
+    app.job_queue.run_once(lambda ctx: _init_schedule_all_users(app), when=2)
     
     # Обработчики команд
     app.add_handler(CommandHandler("start", cmd_start))

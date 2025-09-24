@@ -27,6 +27,9 @@ async def update_user_iaf(session: AsyncSession, telegram_id: int, iaf: float) -
     await session.refresh(user)
     return user
 
+async def get_all_users(session: AsyncSession) -> List[User]:
+    res = await session.execute(select(User))
+    return list(res.scalars().all())
 
 
 # metrics
