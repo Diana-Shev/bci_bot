@@ -32,7 +32,7 @@ async def create_tables():
         
         print("✅ Все таблицы успешно созданы!")
         
-        # Показываем список созданных таблиц (SQLAlchemy 2.x: используем exec_driver_sql)
+        # Показываем список созданных таблиц (SQLAlchemy 2.x)
         async with engine.connect() as conn:
             result = await conn.exec_driver_sql(
                 """
@@ -42,7 +42,7 @@ async def create_tables():
                 ORDER BY table_name
                 """
             )
-            rows = await result.fetchall()
+            rows = result.fetchall()  # без await
             tables = [row[0] for row in rows]
         
         print(f"📋 Созданные таблицы: {', '.join(tables)}")
