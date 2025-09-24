@@ -18,6 +18,10 @@ import re
 from datetime import time as dtime
 from typing import Optional, List
 
+# APScheduler для фоновых уведомлений
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
 async def _find_period_for_time(session, user_id: int, t: dtime):
     from .crud import get_productivity_periods
     periods = await get_productivity_periods(session, user_id)
@@ -173,26 +177,22 @@ DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # Состояния пользователей
 user_states = {}
 
-# Хранилище job-ов уведомлений по пользователям
-user_period_jobs = {}
+# Глобальный планировщик и реестр задач для пользователей
+scheduler = AsyncIOScheduler()
+user_period_jobs: dict[int, List[str]] = {}
 
-async def _send_period_notification(context: ContextTypes.DEFAULT_TYPE):
-    job = context.job
-    data = job.data or {}
-    tg_id = data.get("tg_id")
-    text = data.get("text")
-    if tg_id and text:
-        try:
-            await context.bot.send_message(chat_id=tg_id, text=text)
-        except Exception:
-            pass
+async def _send_period_notification(bot, tg_id: int, text: str):
+    try:
+        await bot.send_message(chat_id=tg_id, text=text)
+    except Exception:
+        pass
 
-async def _schedule_user_periods(application: Application, tg_id: int):
-    # удаляем предыдущие job-ы пользователя
+async def _schedule_user_periods(bot, tg_id: int):
+    # удалить старые задачи пользователя
     if tg_id in user_period_jobs:
-        for job in user_period_jobs[tg_id]:
+        for job_id in user_period_jobs[tg_id]:
             try:
-                job.schedule_removal()
+                scheduler.remove_job(job_id)
             except Exception:
                 pass
         user_period_jobs[tg_id] = []
@@ -203,22 +203,25 @@ async def _schedule_user_periods(application: Application, tg_id: int):
         user = await get_or_create_user(session, telegram_id=tg_id, name=None)
         periods = await get_productivity_periods(session, user.user_id)
 
-    # создаем ежедневные уведомления для каждого периода
+    # создать ежедневные уведомления для каждого периода (CronTrigger по часу/минуте)
     for p in periods:
         text = f"Напоминание: {p.recommended_activity or 'запланированная активность'} (с {p.start_time.strftime('%H:%M')} до {p.end_time.strftime('%H:%M')})"
-        job = application.job_queue.run_daily(
+        job_id = f"period_{tg_id}_{p.start_time.strftime('%H%M')}"
+        scheduler.add_job(
             _send_period_notification,
-            time=dtime(hour=p.start_time.hour, minute=p.start_time.minute),
-            data={"tg_id": tg_id, "text": text},
-            name=f"period_{tg_id}_{p.start_time.strftime('%H%M')}"
+            trigger=CronTrigger(hour=p.start_time.hour, minute=p.start_time.minute),
+            args=[bot, tg_id, text],
+            id=job_id,
+            replace_existing=True,
+            misfire_grace_time=60
         )
-        user_period_jobs[tg_id].append(job)
+        user_period_jobs[tg_id].append(job_id)
 
-async def _init_schedule_all_users(application: Application):
+async def _init_schedule_all_users(bot):
     async with AsyncSessionLocal() as session:
         users = await get_all_users(session)
     for u in users:
-        await _schedule_user_periods(application, u.telegram_id)
+        await _schedule_user_periods(bot, u.telegram_id)
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1230,8 +1233,18 @@ def main():
     app.bot.request.timeout = 300  # 5 минут для больших файлов
     app.bot.request.connect_timeout = 60  # 1 минута на подключение
     
-    # Планировщик: инициализация расписаний для всех пользователей после запуска
-    app.job_queue.run_once(lambda ctx: _init_schedule_all_users(app), when=2)
+    # Запускаем планировщик и инициализируем задания для всех пользователей
+    try:
+        scheduler.start()
+    except Exception:
+        pass
+
+    # Инициализируем расписание после запуска бота (через asyncio task)
+    async def _post_start_init():
+        await _init_schedule_all_users(app.bot)
+    # Запускаем без ожидания
+    import asyncio as _asyncio
+    _asyncio.get_event_loop().create_task(_post_start_init())
     
     # Обработчики команд
     app.add_handler(CommandHandler("start", cmd_start))
