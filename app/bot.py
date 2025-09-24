@@ -356,6 +356,8 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_question_input(update, context)
     elif current_state == "waiting_iaf":
         await handle_iaf_input(update, context)
+    elif current_state == "waiting_schedule_question":
+        await handle_schedule_question(update, context)
     # Если состояние не определено - игнорируем
 
 async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1093,7 +1095,7 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
     # Показываем рекомендации и кнопки для следующего шага
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Улучшить режим дня", callback_data="improve_schedule")],
-        [InlineKeyboardButton("Задать вопрос ai-neiry", callback_data="ask_question")],
+        [InlineKeyboardButton("Спросить про режим дня", callback_data="ask_schedule")],
         [InlineKeyboardButton("🔔 Включить/выключить напоминания", callback_data="toggle_notifications")],
         [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
     ])
@@ -1230,6 +1232,74 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     await query.message.reply_text(text, reply_markup=keyboard)
 
+async def cb_ask_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка кнопки 'Спросить про режим дня' — спец-режим вопросов по расписанию/питанию/сну"""
+    query = update.callback_query
+    await query.answer()
+
+    tg_id = query.from_user.id
+    user_states[tg_id] = "waiting_schedule_question"
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await context.bot.send_message(
+        chat_id=tg_id,
+        text=(
+            "Спросите про ваш режим дня: питание, сон, время тренировок/перерывов, дела по расписанию.\n\n"
+            "Например: 'Во сколько лучше ужинать?', 'Что делать в 17:00?', 'Когда делать перерыв?'"
+        )
+    )
+
+async def handle_schedule_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ответы по режиму дня с учетом ProductivityPeriod. Допускаются бытовые и расписные вопросы."""
+    if not update.message or not update.message.text:
+        return
+
+    tg_id = update.effective_user.id
+    name = update.effective_user.full_name
+    question = update.message.text
+
+    await update.message.reply_text("🤔 Обрабатываю ваш вопрос по режиму дня...")
+
+    # Системная инструкция для режима дня — разрешаем вопросы про расписание/питание/сон
+    history = [
+        {"role": "system", "content": (
+            "Ты помощник по персональному режиму дня на основе расписания пользователя. Отвечай на русском. "
+            "Разрешены вопросы про расписание, питание, сон, перерывы, тренировки. "
+            "Учитывай персональные периоды дня пользователя (если они есть). Пиши кратко и по делу."
+        )}
+    ]
+
+    # Подмешиваем период: либо из текста (время), либо текущий
+    period_time = _extract_time_from_question(question) or datetime.now().time()
+    augmented_question = question
+    try:
+        async with AsyncSessionLocal() as session:
+            user = await get_or_create_user(session, telegram_id=tg_id, name=name)
+            period = await _find_period_for_time(session, user.user_id, period_time)
+        if period:
+            augmented_question = _augment_prompt_with_period(question, period)
+    except Exception:
+        pass
+
+    history.append({"role": "user", "content": augmented_question})
+
+    try:
+        answer = await chat_with_llm(history, max_tokens=600, temperature=0.3)
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Спросить ещё про режим дня", callback_data="ask_schedule")],
+            [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
+        ])
+        await update.message.reply_text(f"Ответ по режиму дня:\n\n{answer}", reply_markup=keyboard)
+        user_states[tg_id] = "welcome"
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Ошибка при обработке вопроса по режиму дня: {str(e)}"
+        )
+        user_states[tg_id] = "welcome"
+
 async def cb_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка кнопки 'Start (переход на начало)'"""
     query = update.callback_query
@@ -1285,6 +1355,7 @@ def main():
     app.add_handler(CallbackQueryHandler(cb_improve_schedule, pattern="^improve_schedule$"))
     app.add_handler(CallbackQueryHandler(cb_get_full_report, pattern="^get_full_report$")) # Регистрируем новый обработчик
     app.add_handler(CallbackQueryHandler(cb_toggle_notifications, pattern="^toggle_notifications$"))
+    app.add_handler(CallbackQueryHandler(cb_ask_schedule, pattern="^ask_schedule$"))
     app.add_handler(CallbackQueryHandler(cb_restart, pattern="^restart$"))
     
     # Обработчики сообщений (важен порядок!)
