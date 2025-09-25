@@ -5,6 +5,7 @@ from datetime import datetime
 import pandas as pd
 import aiohttp # Добавляем импорт aiohttp
 import re # Добавляем импорт re для safe_json_loads
+import pytz
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -384,7 +385,7 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
                 "концентрации или восстановлению – вежливо откажись отвечать и предложи перейти к анализу метрик, либо пусть задаст вопрос в рамках темы." )}
         ]
     # Добавляем новое сообщение пользователя (с доп. контекстом периода)
-    period_time = _extract_time_from_question(question) or datetime.now().time()
+    period_time = _extract_time_from_question(question) or get_moscow_time().time()
     augmented_question = question
     try:
         async with AsyncSessionLocal() as session:
@@ -1273,7 +1274,7 @@ async def handle_schedule_question(update: Update, context: ContextTypes.DEFAULT
     ]
 
     # Подмешиваем период: либо из текста (время), либо текущий
-    period_time = _extract_time_from_question(question) or datetime.now().time()
+    period_time = _extract_time_from_question(question) or get_moscow_time().time()
     augmented_question = question
     try:
         async with AsyncSessionLocal() as session:
