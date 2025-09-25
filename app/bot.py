@@ -1323,6 +1323,10 @@ async def cb_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+MOSCOW_TZ = pytz.timezone('Europe/Moscow')
+def get_moscow_time():
+    return datetime.now(MOSCOW_TZ)
+
 def main():
     app = Application.builder().token(settings.BOT_TOKEN).build()
     
