@@ -1228,7 +1228,11 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     # Показываем финальные кнопки
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
+        [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
+        [InlineKeyboardButton("Вопрос к ai-neiry", callback_data="ask_question")],
+        [InlineKeyboardButton("🔔 Включить/выключить напоминания", callback_data="toggle_notifications")],
+        [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
+        [InlineKeyboardButton("🔄 Start", callback_data="restart")]
     ])
     
     await query.message.reply_text(text, reply_markup=keyboard)
@@ -1295,6 +1299,8 @@ async def handle_schedule_question(update: Update, context: ContextTypes.DEFAULT
             notif_enabled = bool(getattr(user, 'notifications_enabled', 0))
         notif_text = "🔕 Отключить напоминания" if notif_enabled else "🔔 Включить напоминания"
         keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
+            [InlineKeyboardButton("Вопрос к ai-neiry", callback_data="ask_question")],
             [InlineKeyboardButton(notif_text, callback_data="toggle_notifications")],
             [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
             [InlineKeyboardButton("🔄 Start", callback_data="restart")]
