@@ -1289,9 +1289,15 @@ async def handle_schedule_question(update: Update, context: ContextTypes.DEFAULT
 
     try:
         answer = await chat_with_llm(history, max_tokens=600, temperature=0.3)
+        # Получаем актуальное состояние напоминаний
+        async with AsyncSessionLocal() as session:
+            user = await get_or_create_user(session, telegram_id=tg_id, name=name)
+            notif_enabled = bool(getattr(user, 'notifications_enabled', 0))
+        notif_text = "🔕 Отключить напоминания" if notif_enabled else "🔔 Включить напоминания"
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Спросить ещё про режим дня", callback_data="ask_schedule")],
-            [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
+            [InlineKeyboardButton(notif_text, callback_data="toggle_notifications")],
+            [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
+            [InlineKeyboardButton("🔄 Start", callback_data="restart")]
         ])
         await update.message.reply_text(f"Ответ по режиму дня:\n\n{answer}", reply_markup=keyboard)
         user_states[tg_id] = "welcome"
