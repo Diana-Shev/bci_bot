@@ -23,6 +23,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=True)
     email: Mapped[str] = mapped_column(String(100), unique=True, nullable=True)
     iaf: Mapped[float] = mapped_column(Numeric(4, 2), nullable=True)  # Individual Alpha Frequency
+    notifications_enabled: Mapped[bool] = mapped_column(Integer, default=0)  # 0 - выкл, 1 - вкл
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now())
     # связи
     metrics: Mapped[List["Metric"]] = relationship(back_populates="user")
