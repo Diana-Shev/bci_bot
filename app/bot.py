@@ -404,10 +404,17 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
         history.append({"role": "assistant", "content": answer})
         context.chat_data["history"] = history[-20:]
         
-        # Показываем ответ и кнопки
+        # Получаем актуальное состояние напоминаний
+        async with AsyncSessionLocal() as session:
+            user = await get_or_create_user(session, telegram_id=tg_id, name=name)
+            notif_enabled = bool(getattr(user, 'notifications_enabled', 0))
+        notif_text = "🔕 Отключить напоминания" if notif_enabled else "🔔 Включить напоминания"
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Задать ещё вопрос", callback_data="ask_question")],
-            [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")]
+            [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
+            [InlineKeyboardButton("Вопрос к ai-neiry", callback_data="ask_question")],
+            [InlineKeyboardButton(notif_text, callback_data="toggle_notifications")],
+            [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
+            [InlineKeyboardButton("🔄 Start", callback_data="restart")]
         ])
         
         await update.message.reply_text(f"Ответ ai-neiry:\n\n{answer}", reply_markup=keyboard)
@@ -422,8 +429,9 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
         )
         
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Задать ещё вопрос", callback_data="ask_question")],
-            [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")]
+            [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
+            [InlineKeyboardButton("Вопрос к ai-neiry", callback_data="ask_question")],
+            [InlineKeyboardButton("🔄 Start", callback_data="restart")]
         ])
         await update.message.reply_text("Что дальше?", reply_markup=keyboard)
 
