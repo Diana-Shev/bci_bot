@@ -431,31 +431,21 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
         # Получаем актуальное состояние напоминаний
         async with AsyncSessionLocal() as session:
             user = await get_or_create_user(session, telegram_id=tg_id, name=name)
-            notif_enabled = bool(getattr(user, 'notifications_enabled', 0))
-        notif_text = "🔕 Отключить напоминания" if notif_enabled else "🔔 Включить напоминания"
+        # После ответа ai-neiry показываем минимальное меню
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
-            [InlineKeyboardButton("Вопрос к ai-neiry", callback_data="ask_question")],
-            [InlineKeyboardButton(notif_text, callback_data="toggle_notifications")],
-            [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
-            [InlineKeyboardButton("🔄 Start", callback_data="restart")]
+            [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
+            [InlineKeyboardButton("Задать ещё вопрос", callback_data="ask_question")]
         ])
-        
         await update.message.reply_text(f"Ответ ai-neiry:\n\n{answer}", reply_markup=keyboard)
-        
-        # Возвращаем в состояние welcome для возможности задать новый вопрос
         user_states[tg_id] = "welcome"
-        
     except Exception as e:
         await update.message.reply_text(
             f"❌ Ошибка при обработке вопроса: {str(e)}\n\n"
             "Попробуйте ещё раз или перейдите к анализу метрик."
         )
-        
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
-            [InlineKeyboardButton("Вопрос к ai-neiry", callback_data="ask_question")],
-            [InlineKeyboardButton("🔄 Start", callback_data="restart")]
+            [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
+            [InlineKeyboardButton("Задать ещё вопрос", callback_data="ask_question")]
         ])
         await update.message.reply_text("Что дальше?", reply_markup=keyboard)
 
