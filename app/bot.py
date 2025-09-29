@@ -41,12 +41,21 @@ async def _find_period_for_time(session, user_id: int, t: dtime):
 def _extract_time_from_question(text: str) -> Optional[dtime]:
     # Ищем время формата 17:00, 9:30, 17.00, 9.30
     m = re.search(r"(\d{1,2})[:.](\d{2})", text)
-    if not m:
-        return None
-    hh = int(m.group(1))
-    mm = int(m.group(2))
-    if 0 <= hh <= 23 and 0 <= mm <= 59:
-        return dtime(hour=hh, minute=mm)
+    if m:
+        hh = int(m.group(1))
+        mm = int(m.group(2))
+        if 0 <= hh <= 23 and 0 <= mm <= 59:
+            return dtime(hour=hh, minute=mm)
+    # Пробуем распознать ключевые слова времени суток
+    lowered = text.lower()
+    if "утром" in lowered or "утро" in lowered:
+        return dtime(hour=9, minute=0)
+    if "днём" in lowered or "днем" in lowered or "день" in lowered:
+        return dtime(hour=14, minute=0)
+    if "вечером" in lowered or "вечер" in lowered:
+        return dtime(hour=19, minute=0)
+    if "ночью" in lowered or "ночь" in lowered:
+        return dtime(hour=23, minute=0)
     return None
 
 
@@ -102,7 +111,7 @@ def safe_json_loads(raw: str):
     fixed = re.sub(r",\s*([}\]])", r"\1", cleaned)  # убираем запятую перед } или ]
     fixed = fixed.replace('\\"', '"')  # убираем лишние escape
     # умные кавычки → обычные
-    fixed = fixed.replace('“', '"').replace('”', '"').replace('«', '"').replace('»', '"')
+    fixed = fixed.replace('"', '"').replace('"', '"').replace('"', '"').replace('"', '"')
     fixed = fixed.replace("'", '"')  # одинарные кавычки → двойные
 
     # Удаляем попытку закрыть незавершенные строковые значения и балансировать скобки
@@ -232,15 +241,30 @@ async def cb_toggle_notifications(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
     tg_id = query.from_user.id
-
-    if tg_id in notifications_enabled_users:
-        await _unschedule_user_periods(tg_id)
-        notifications_enabled_users.discard(tg_id)
-        await query.message.reply_text("🔕 Напоминания по режиму дня отключены.")
-    else:
-        await _schedule_user_periods(context.bot, tg_id)
-        notifications_enabled_users.add(tg_id)
-        await query.message.reply_text("🔔 Напоминания по режиму дня включены. Я буду писать в начале каждого периода.")
+    async with AsyncSessionLocal() as session:
+        user = await get_or_create_user(session, telegram_id=tg_id, name=None)
+        notif_enabled = bool(getattr(user, 'notifications_enabled', 0))
+        if notif_enabled:
+            await _unschedule_user_periods(tg_id)
+            user.notifications_enabled = 0
+            await session.commit()
+            await query.message.reply_text("🔕 Напоминания по режиму дня отключены.")
+        else:
+            await _schedule_user_periods(context.bot, tg_id)
+            user.notifications_enabled = 1
+            await session.commit()
+            await query.message.reply_text("🔔 Напоминания по режиму дня включены. Я буду писать в начале каждого периода.")
+    # Обновляем кнопки под последним сообщением (без кнопки 'Вопрос к ai-neiry')
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
+        [InlineKeyboardButton("Включить/Отключить напоминания", callback_data="toggle_notifications")],
+        [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
+        [InlineKeyboardButton("🔄 Start", callback_data="restart")]
+    ])
+    try:
+        await query.message.edit_reply_markup(reply_markup=keyboard)
+    except Exception:
+        pass
 
 async def _init_schedule_all_users(bot):
     async with AsyncSessionLocal() as session:
@@ -1237,7 +1261,6 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Показываем финальные кнопки
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
-        [InlineKeyboardButton("Вопрос к ai-neiry", callback_data="ask_question")],
         [InlineKeyboardButton("🔔 Включить/выключить напоминания", callback_data="toggle_notifications")],
         [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
         [InlineKeyboardButton("🔄 Start", callback_data="restart")]
@@ -1304,11 +1327,9 @@ async def handle_schedule_question(update: Update, context: ContextTypes.DEFAULT
         # Получаем актуальное состояние напоминаний
         async with AsyncSessionLocal() as session:
             user = await get_or_create_user(session, telegram_id=tg_id, name=name)
-            notif_enabled = bool(getattr(user, 'notifications_enabled', 0))
-        notif_text = "🔕 Отключить напоминания" if notif_enabled else "🔔 Включить напоминания"
+        notif_text = "Включить/Отключить напоминания"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
-            [InlineKeyboardButton("Вопрос к ai-neiry", callback_data="ask_question")],
             [InlineKeyboardButton(notif_text, callback_data="toggle_notifications")],
             [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
             [InlineKeyboardButton("🔄 Start", callback_data="restart")]
