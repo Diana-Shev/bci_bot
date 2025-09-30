@@ -2,7 +2,6 @@
 import json
 from pathlib import Path
 from datetime import datetime
-import pandas as pd
 import aiohttp # Добавляем импорт aiohttp
 import re # Добавляем импорт re для safe_json_loads
 import pytz
@@ -12,7 +11,6 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 )
 
-import re
 
 
 # --- Helpers для времени и периодов ---
@@ -20,8 +18,7 @@ from datetime import time as dtime
 from typing import Optional, List
 
 # APScheduler для фоновых уведомлений
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+ 
 
 async def _find_period_for_time(session, user_id: int, t: dtime):
     from .crud import get_productivity_periods
@@ -187,90 +184,9 @@ DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # Состояния пользователей
 user_states = {}
 
-# Глобальный планировщик и реестр задач для пользователей
-scheduler = AsyncIOScheduler()
-user_period_jobs: dict[int, List[str]] = {}
-notifications_enabled_users: set[int] = set()
+## Удалено: планировщик и реестр задач для уведомлений
 
-async def _send_period_notification(bot, tg_id: int, text: str):
-    try:
-        await bot.send_message(chat_id=tg_id, text=text)
-    except Exception:
-        pass
-
-async def _schedule_user_periods(bot, tg_id: int):
-    # удалить старые задачи пользователя
-    if tg_id in user_period_jobs:
-        for job_id in user_period_jobs[tg_id]:
-            try:
-                scheduler.remove_job(job_id)
-            except Exception:
-                pass
-        user_period_jobs[tg_id] = []
-    else:
-        user_period_jobs[tg_id] = []
-
-    async with AsyncSessionLocal() as session:
-        user = await get_or_create_user(session, telegram_id=tg_id, name=None)
-        periods = await get_productivity_periods(session, user.user_id)
-
-    # создать ежедневные уведомления для каждого периода (CronTrigger по часу/минуте)
-    for p in periods:
-        text = f"Напоминание: {p.recommended_activity or 'запланированная активность'} (с {p.start_time.strftime('%H:%M')} до {p.end_time.strftime('%H:%M')})"
-        job_id = f"period_{tg_id}_{p.start_time.strftime('%H%M')}"
-        scheduler.add_job(
-            _send_period_notification,
-            trigger=CronTrigger(hour=p.start_time.hour, minute=p.start_time.minute),
-            args=[bot, tg_id, text],
-            id=job_id,
-            replace_existing=True,
-            misfire_grace_time=60
-        )
-        user_period_jobs[tg_id].append(job_id)
-
-async def _unschedule_user_periods(tg_id: int):
-    if tg_id in user_period_jobs:
-        for job_id in user_period_jobs[tg_id]:
-            try:
-                scheduler.remove_job(job_id)
-            except Exception:
-                pass
-        user_period_jobs[tg_id] = []
-
-async def cb_toggle_notifications(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    tg_id = query.from_user.id
-    async with AsyncSessionLocal() as session:
-        user = await get_or_create_user(session, telegram_id=tg_id, name=None)
-        notif_enabled = bool(getattr(user, 'notifications_enabled', 0))
-        if notif_enabled:
-            await _unschedule_user_periods(tg_id)
-            user.notifications_enabled = 0
-            await session.commit()
-            await query.message.reply_text("🔕 Напоминания по режиму дня отключены.")
-        else:
-            await _schedule_user_periods(context.bot, tg_id)
-            user.notifications_enabled = 1
-            await session.commit()
-            await query.message.reply_text("🔔 Напоминания по режиму дня включены. Я буду писать в начале каждого периода.")
-    # Обновляем кнопки под последним сообщением (без кнопки 'Вопрос к ai-neiry')
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
-        [InlineKeyboardButton("Включить/Отключить напоминания", callback_data="toggle_notifications")],
-        [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
-        [InlineKeyboardButton("🔄 Start", callback_data="restart")]
-    ])
-    try:
-        await query.message.edit_reply_markup(reply_markup=keyboard)
-    except Exception:
-        pass
-
-async def _init_schedule_all_users(bot):
-    async with AsyncSessionLocal() as session:
-        users = await get_all_users(session)
-    for u in users:
-        await _schedule_user_periods(bot, u.telegram_id)
+## Удалены: все функции и обработчики, связанные с напоминаниями и планировщиком
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -782,11 +698,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with AsyncSessionLocal() as session:
         await save_productivity_periods(session, user.user_id, periods)
 
-    # Пересоздаём уведомления для пользователя по его периодам
-    try:
-        await _schedule_user_periods(context.application, tg_id)
-    except Exception:
-        pass
+    # Удалено: пересоздание уведомлений по периодам
 
     # Меняем состояние
     user_states[tg_id] = "analysis_complete"
@@ -1362,17 +1274,7 @@ def main():
     app.bot.request.connect_timeout = 60  # 1 минута на подключение
     
     # Запускаем планировщик и инициализируем задания для всех пользователей
-    try:
-        scheduler.start()
-    except Exception:
-        pass
-
-    # Инициализируем расписание после запуска бота (через asyncio task)
-    async def _post_start_init():
-        await _init_schedule_all_users(app.bot)
-    # Запускаем без ожидания
-    import asyncio as _asyncio
-    _asyncio.get_event_loop().create_task(_post_start_init())
+    # Удалено: запуск планировщика и инициализация напоминаний
     
     # Обработчики команд
     app.add_handler(CommandHandler("start", cmd_start))
@@ -1385,7 +1287,6 @@ def main():
     app.add_handler(CallbackQueryHandler(cb_download_csv, pattern="^download_csv$"))
     app.add_handler(CallbackQueryHandler(cb_get_recommendations, pattern="^get_recommendations$"))
     app.add_handler(CallbackQueryHandler(cb_improve_schedule, pattern="^improve_schedule$"))
-    app.add_handler(CallbackQueryHandler(cb_get_full_report, pattern="^get_full_report$"))
     app.add_handler(CallbackQueryHandler(cb_ask_schedule, pattern="^ask_schedule$"))
     app.add_handler(CallbackQueryHandler(cb_restart, pattern="^restart$"))
     
