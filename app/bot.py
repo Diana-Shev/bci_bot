@@ -1120,7 +1120,6 @@ async def cb_get_recommendations(update: Update, context: ContextTypes.DEFAULT_T
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Улучшить режим дня", callback_data="improve_schedule")],
         [InlineKeyboardButton("Спросить про режим дня", callback_data="ask_schedule")],
-        [InlineKeyboardButton("🔔 Включить/выключить напоминания", callback_data="toggle_notifications")],
         [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
     ])
     
@@ -1252,8 +1251,6 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Показываем финальные кнопки
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
-        [InlineKeyboardButton("🔔 Включить/выключить напоминания", callback_data="toggle_notifications")],
-        [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
         [InlineKeyboardButton("🔄 Start", callback_data="restart")]
     ])
     
@@ -1318,10 +1315,8 @@ async def handle_schedule_question(update: Update, context: ContextTypes.DEFAULT
         # Получаем актуальное состояние напоминаний
         async with AsyncSessionLocal() as session:
             user = await get_or_create_user(session, telegram_id=tg_id, name=name)
-        notif_text = "Включить/Отключить напоминания"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
-            [InlineKeyboardButton(notif_text, callback_data="toggle_notifications")],
             [InlineKeyboardButton("✨ Улучшить режим дня", callback_data="improve_schedule")],
             [InlineKeyboardButton("🔄 Start", callback_data="restart")]
         ])
@@ -1390,8 +1385,7 @@ def main():
     app.add_handler(CallbackQueryHandler(cb_download_csv, pattern="^download_csv$"))
     app.add_handler(CallbackQueryHandler(cb_get_recommendations, pattern="^get_recommendations$"))
     app.add_handler(CallbackQueryHandler(cb_improve_schedule, pattern="^improve_schedule$"))
-    app.add_handler(CallbackQueryHandler(cb_get_full_report, pattern="^get_full_report$")) # Регистрируем новый обработчик
-    app.add_handler(CallbackQueryHandler(cb_toggle_notifications, pattern="^toggle_notifications$"))
+    app.add_handler(CallbackQueryHandler(cb_get_full_report, pattern="^get_full_report$"))
     app.add_handler(CallbackQueryHandler(cb_ask_schedule, pattern="^ask_schedule$"))
     app.add_handler(CallbackQueryHandler(cb_restart, pattern="^restart$"))
     
