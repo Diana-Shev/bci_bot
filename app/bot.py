@@ -1250,7 +1250,7 @@ async def cb_improve_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     # Показываем финальные кнопки
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Вопрос по режиму дня", callback_data="ask_schedule")],
+        [InlineKeyboardButton("Спросить про режим дня", callback_data="ask_schedule")],
         [InlineKeyboardButton("🔄 Start", callback_data="restart")]
     ])
     
