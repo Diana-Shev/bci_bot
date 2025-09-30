@@ -287,7 +287,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Создаем клавиатуру с кнопками
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
+        [InlineKeyboardButton("Начать анализ", callback_data="input_iaf")],
         [InlineKeyboardButton("Задать вопрос ai-neiry", callback_data="ask_question")]
     ])
     
@@ -433,7 +433,7 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
             user = await get_or_create_user(session, telegram_id=tg_id, name=name)
         # После ответа ai-neiry показываем минимальное меню
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
+            [InlineKeyboardButton("Начать анализ", callback_data="input_iaf")],
             [InlineKeyboardButton("Задать ещё вопрос", callback_data="ask_question")]
         ])
         await update.message.reply_text(f"Ответ ai-neiry:\n\n{answer}", reply_markup=keyboard)
@@ -444,7 +444,7 @@ async def handle_question_input(update: Update, context: ContextTypes.DEFAULT_TY
             "Попробуйте ещё раз или перейдите к анализу метрик."
         )
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
+            [InlineKeyboardButton("Начать анализ", callback_data="input_iaf")],
             [InlineKeyboardButton("Задать ещё вопрос", callback_data="ask_question")]
         ])
         await update.message.reply_text("Что дальше?", reply_markup=keyboard)
@@ -1343,7 +1343,7 @@ async def cb_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[tg_id] = "welcome"
     
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Начать анализ IAF", callback_data="input_iaf")],
+        [InlineKeyboardButton("Начать анализ", callback_data="input_iaf")],
         [InlineKeyboardButton("Задать вопрос ai-neiry", callback_data="ask_question")]
     ])
     
