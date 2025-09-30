@@ -482,7 +482,7 @@ async def handle_iaf_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"Отлично! Твой IAF: {iaf} Гц\n\n"
-        "Теперь загрузи файл с метриками (CSV или XLSX)",
+        "Теперь загрузи файл с метриками (CSV)",
         reply_markup=keyboard
     )
 
@@ -495,7 +495,7 @@ async def cb_upload_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[tg_id] = "waiting_file"
     
     await query.edit_message_text(
-        "Прикрепи файл с метриками (CSV или XLSX).\n\n"
+        "Прикрепи файл с метриками (CSV).\n\n"
         "Файл должен содержать колонки:\n"
         "• timestamp - время измерения\n"
         "• focus - концентрация\n"
@@ -513,19 +513,19 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Проверяем состояние, но корректно подсказываем и показываем кнопку
     if user_states.get(tg_id) != "waiting_file":
-        if not update.message.document.file_name.lower().endswith((".csv", ".xlsx")):
-            await update.message.reply_text("❌ Файл неверного формата. Поддерживаются только CSV или XLSX.")
+        if not update.message.document.file_name.lower().endswith((".csv")):
+            await update.message.reply_text("❌ Файл неверного формата. Поддерживается только CSV.")
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📎 Прикрепить файл", callback_data="upload_file")]])
-        await update.message.reply_text("Сначала нажмите 'Прикрепить файл' и отправьте CSV/XLSX.", reply_markup=keyboard)
+        await update.message.reply_text("Сначала нажмите 'Прикрепить файл' и отправьте CSV.", reply_markup=keyboard)
         return
     
     doc = update.message.document
     name = update.effective_user.full_name
     
     # Проверяем расширение файла
-    if not doc.file_name.lower().endswith((".csv", ".xlsx")):
+    if not doc.file_name.lower().endswith((".csv")):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📎 Прикрепить файл", callback_data="upload_file")]])
-        await update.message.reply_text("❌ Файл неверного формата. Поддерживаются только CSV или XLSX.", reply_markup=keyboard)
+        await update.message.reply_text("❌ Файл неверного формата. Поддерживается только CSV.", reply_markup=keyboard)
         return
     
     # Проверяем размер файла (максимум 20MB)
@@ -791,27 +791,28 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Меняем состояние
     user_states[tg_id] = "analysis_complete"
     
-    # Показываем результаты и кнопки
+    # Показываем результаты и кнопки: сразу полный отчёт, без превью
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📥 Скачать превью (CSV)", callback_data="download_csv")],
+        [InlineKeyboardButton("📥 Скачать отчёт (CSV)", callback_data="download_csv")],
         [InlineKeyboardButton("Получить рекомендации по режиму дня", callback_data="get_recommendations")],
-        [InlineKeyboardButton("Получить полный отчет", callback_data="get_full_report")], # Новая кнопка
         [InlineKeyboardButton("🔄 Start (переход на начало)", callback_data="restart")]
     ])
     
-    preview = "\n".join([f"{p.get('start_time','?')}–{p.get('end_time','?')}: {p.get('recommended_activity','')}" for p in periods[:5]]) or "LLM не нашёл явных периодов."
-    msg = f"Анализ завершен! Найдено {len(periods)} периодов.\n\nПревью:\n{preview}"
-    if day_plan:
-        msg += f"\n\nПлан дня:\n{day_plan}"
-    if suggestions:
-        msg += "\n\nРекомендации и советы:\n- " + "\n- ".join(suggestions[:3])
+    # Формируем полный текст отчёта из JSON-ответа
+    full_report_text = format_full_report_json(json.dumps(data)) if isinstance(data, dict) else str(data)
+    if not full_report_text or not full_report_text.strip():
+        # fallback: если форматирование не удалось, показываем сырой ответ модели
+        try:
+            full_report_text = raw.strip()
+        except Exception:
+            full_report_text = "(Пустой отчёт)"
     
-    # После формирования переменной msg (текстовый отчет для пользователя):
+    # Сохраняем текст для дальнейшей выгрузки в CSV
     user_states[tg_id] = {
         "state": "analysis_complete",
-        "last_report": msg  # Сохраняем текст отчета для дальнейшей выгрузки
+        "last_report": full_report_text
     }
-    await update.message.reply_text(msg, reply_markup=keyboard)
+    await update.message.reply_text(full_report_text, reply_markup=keyboard)
 
 async def cb_get_full_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка кнопки 'Получить полный отчет'"""
